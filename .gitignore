@@ -1,0 +1,10 @@
+# This repo publishes ONLY the tool and the community sync data.
+# Everything else in this working folder is private: HTML backups, feature
+# specs, personal CSV exports (which contain Owned parts and ship loadouts),
+# and local tooling. Ignore everything by default, then un-ignore the few
+# files we intend to publish.
+/*
+!.gitignore
+!README.md
+!SWGR-ROGUE-Space-Tool.html
+!community-sync.csv
