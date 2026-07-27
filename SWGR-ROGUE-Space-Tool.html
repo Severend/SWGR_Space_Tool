@@ -2347,9 +2347,20 @@ function parseTooltip(raw){
    const key=ocrResolveLabel(p.raw,type);if(!key)continue;
    const num=(OCR_MAXPAIR.has(key)?ocrValueMax(p.val):ocrValueNum(p.val));if(num!==null&&draft[key]===undefined)draft[key]=num;
  }
+ // Looted names are datamined templates: recover the canonical spelling from OCR
+ // damage so the catalog stays clean (and so the name-based RE-level recovery in
+ // applyLevelDefaults can match). Crafted/REed keep the Shipwright's own name.
+ // The review modal still shows the result for the user to override.
+ let nameOut=title, ocrOrig=null;
+ if(source==='Looted' && title){
+   const canon=canonicalLootedName(title, type);
+   if(canon && canon!==title){ nameOut=canon; ocrOrig=title; }
+ }
  // Faithful "what OCR actually saw" — backward-compat defaults (copying a
  // lone level into the other field, ShipClass) are applied by the caller.
- return Object.assign({ComponentType:type,RELevel:reLvl,CertificationLevel:certLvl,ComponentName:title,Source:source,Ownership:'Owned'},draft);
+ const out=Object.assign({ComponentType:type,RELevel:reLvl,CertificationLevel:certLvl,ComponentName:nameOut,Source:source,Ownership:'Owned'},draft);
+ if(ocrOrig) out._ocrName=ocrOrig;   // transient hint for the scan toast; not a saved field
+ return out;
 }
 
 /* ---------- apply scan: fill the open modal, or open a new one ---------- */
@@ -2391,7 +2402,8 @@ async function scanImageFile(file){
     const draft=applyLevelDefaults(parseTooltip(text));
     const statCount=Object.keys(draft).filter(k=>STAT_DEFS[k]!==undefined).length;
     scanApply(draft);
-    if(statCount===0) toast('No stats recognized — try a sharper or more zoomed-in screenshot');
+    if(draft._ocrName) toast('Name corrected to “'+draft.ComponentName+'” — review and Save');
+    else if(statCount===0) toast('No stats recognized — try a sharper or more zoomed-in screenshot');
     else toast('Recognized '+statCount+' stat(s) — review and Save');
   }catch(err){
     toast('Scan failed: '+err.message);
@@ -2786,6 +2798,37 @@ function templateRELevel(name, type){
   if(!hit) return null;
   if(type && canonType(hit.type)!==canonType(type)) return null;
   return hit.lvl;
+}
+// Fold a name to a comparison key with the game font's SYSTEMATIC OCR errors
+// removed: it renders "V" as "¥"/"Y", and "I"/"1" and "O"/"0" interchange. Folding
+// these out before comparing means a genuine one-off misread is a tiny edit
+// distance from the real name (reNormName above keeps case/punctuation only).
+function canonFold(s){ return String(s||'').toUpperCase().replace(/¥/g,'V').replace(/[^A-Z0-9]/g,'').replace(/Y/g,'V').replace(/1/g,'I').replace(/0/g,'O'); }
+// Recover a LOOTED part's canonical datamined name from OCR damage. A looted
+// name IS a brandslist template, so match the OCR title to the nearest BRANDS
+// name of the same type by folded edit distance. Accept ONLY a unique nearest
+// within a length-scaled cap; on any tie, keep the OCR name untouched rather than
+// guess — a tie is the signature of a name truncated at its distinguishing token
+// (e.g. cut off at "Mark ", where every Mark variant is equally near), and the
+// tooltip's level can't safely break it (a part's RE level ≠ its datamined tier
+// on a mismatched roll). Crafted/REed never reach here — Shipwrights name their
+// own goods. Deeply truncated names simply stay as scanned for a manual fix.
+function canonicalLootedName(title, type){
+  const L=letterOf(type); if(!L||!BRANDS[L]) return null;
+  const q=canonFold(title); if(q.length<5) return null;
+  const cap=Math.max(2, Math.floor(q.length*0.18));
+  const hits=[];
+  for(const lvl in BRANDS[L]){
+    for(const p of BRANDS[L][lvl]){
+      const cand=canonFold(p.n); if(cand.length<3) continue;
+      const d=ocrEditDist(q, cand, cap);
+      if(d<=cap) hits.push({name:p.n, d:d});
+    }
+  }
+  if(!hits.length) return null;
+  hits.sort((a,b)=>a.d-b.d);
+  const tied=hits.filter(h=>h.d===hits[0].d);
+  return tied.length===1 ? tied[0].name : null;               // unique nearest, else keep OCR
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
