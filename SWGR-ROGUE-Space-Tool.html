@@ -1532,17 +1532,21 @@ function componentsToCSV(rows){
    copy of the data. Used to dedupe shared imports. Text fields compare
    case-insensitively/trimmed (tolerates casing drift); stats compare numerically
    so "78" and "78.0" match. Kept in sync with scratchpad merge.js. */
-function partSignature(row){
+function _partSigParts(row, withName){
   const txt = v => String(v==null?'':v).trim().toLowerCase();
   const num = v => { const s=txt(v); if(s==='') return ''; const n=Number(s); return isNaN(n)?s:n; };
-  const parts = [
-    txt(row.ComponentType), txt(row.ComponentName),
-    num(row.RELevel), num(row.CertificationLevel),
-    txt(row.ShipClass), txt(row.Source),
-  ];
+  const parts = [ txt(row.ComponentType) ];
+  if(withName) parts.push(txt(row.ComponentName));
+  parts.push(num(row.RELevel), num(row.CertificationLevel), txt(row.ShipClass), txt(row.Source));
   ALL_STAT_KEYS.forEach(k=>parts.push(num(row[k])));
   return parts.join('␟');
 }
+function partSignature(row){ return _partSigParts(row, true); }
+// Same observed identity MINUS the name — used by the shared-merge reconciliation
+// so an OCR name correction (same part, cleaner name) updates the stored name in
+// place instead of importing a duplicate. Different stat ROLLS still differ (all
+// stats are in the key), so legitimate range-filling variety is preserved.
+function partSigNoName(row){ return _partSigParts(row, false); }
 
 /* ============================================================
    STATE + RENDER
@@ -2634,8 +2638,9 @@ document.getElementById('file-input').addEventListener('change',e=>{
       if(!parsed.length){ toast('No valid components found in CSV'); return; }
       const missingIds = parsed.filter(p=>!p.InstanceId).length;
       if(importMode){
-        const {added,dupes} = mergeSharedComponents(parsed);
+        const {added,dupes,renamed} = mergeSharedComponents(parsed);
         toast(`Imported ${added} shared component(s) as Observed`
+          + (renamed ? ` · corrected ${renamed} name${renamed>1?'s':''}` : '')
           + (dupes ? ` · skipped ${dupes} duplicate${dupes>1?'s':''}` : ''));
       } else {
         DATA = parsed;
@@ -2681,16 +2686,33 @@ function buildExportCSV(){
    ============================================================ */
 const COMMUNITY_SYNC_URL = 'https://raw.githubusercontent.com/Severend/SWGR_Space_Tool/main/community-sync.csv';
 
-// Merge parsed components as shared/observed: force Observed and skip any part
-// whose observed signature already exists (in DATA or earlier in this batch).
-// Returns {added, dupes}. Shared by Import Shared (file) and Community Sync (URL).
+// Merge parsed components as shared/observed. The shared pool exists only to fill
+// out stat ranges, so it should hold ONE copy of each observed part and no stale
+// spellings. We dedup by NAME-INDEPENDENT identity (type + levels + ship class +
+// source + every stat): a part already present is never re-added, and when the
+// incoming copy carries a cleaner/canonical name (the scanner's OCR fix, or a
+// maintainer correction) we adopt it in place — but only on Observed rows, never
+// on a part the user owns. Different stat rolls keep their own rows (all stats are
+// in the key), so range-filling variety is preserved. Returns {added, dupes,
+// renamed}. Shared by Import Shared (file) and Community Sync (URL).
 function mergeSharedComponents(parsed){
   parsed.forEach(p=>p.Ownership='Observed');
-  const seen = new Set(DATA.map(partSignature));
-  const fresh = []; let dupes = 0;
-  parsed.forEach(p=>{ const sig=partSignature(p); if(seen.has(sig)){ dupes++; return; } seen.add(sig); fresh.push(p); });
+  const byId = new Map();   // name-independent signature -> existing row (prefer an Observed target)
+  DATA.forEach(r=>{ const k=partSigNoName(r); const ex=byId.get(k);
+    if(!ex || (ex.Ownership!=='Observed' && r.Ownership==='Observed')) byId.set(k,r); });
+  const fresh = []; let dupes = 0, renamed = 0;
+  parsed.forEach(p=>{
+    const k=partSigNoName(p); const hit=byId.get(k);
+    if(hit){                                        // same observed part already present
+      if(hit.Ownership==='Observed' && hit.ComponentName!==p.ComponentName){
+        hit.ComponentName=p.ComponentName; renamed++; // adopt the cleaner name in place
+      } else dupes++;
+      return;                                       // never add a duplicate
+    }
+    byId.set(k,p); fresh.push(p);                   // new part (also dedups within this batch)
+  });
   DATA = DATA.concat(fresh);
-  return { added: fresh.length, dupes };
+  return { added: fresh.length, dupes, renamed };
 }
 
 async function communitySync(){
@@ -2705,9 +2727,11 @@ async function communitySync(){
     try{ parsed=csvToComponents(text); }
     catch(err){ toast('Community sync parse error: '+err.message); return; }
     if(!parsed.length){ toast('Community file had no components'); return; }
-    const {added,dupes}=mergeSharedComponents(parsed);
+    const {added,dupes,renamed}=mergeSharedComponents(parsed);
     recompute();
-    toast(`Community sync: added ${added} new`+(dupes?` · skipped ${dupes} already had`:''));
+    toast(`Community sync: added ${added} new`
+      +(renamed?` · corrected ${renamed} name${renamed>1?'s':''}`:'')
+      +(dupes?` · skipped ${dupes} already had`:''));
   }catch(err){
     toast('Community sync failed: '+((err&&err.message)||err)+' — check your connection');
   }finally{
@@ -2806,33 +2830,48 @@ function templateRELevel(name, type){
 function canonFold(s){ return String(s||'').toUpperCase().replace(/¥/g,'V').replace(/[^A-Z0-9]/g,'').replace(/Y/g,'V').replace(/1/g,'I').replace(/0/g,'O'); }
 // Recover a LOOTED part's canonical datamined name from OCR damage. A looted
 // name IS a brandslist template, so match the OCR title to the nearest BRANDS
-// name of the same type by folded edit distance, within a length-scaled cap.
-// Two stages: (1) match the WHOLE type pool and accept a unique nearest — this
-// handles the common case and is robust to a mis-scanned level. (2) If that ties
-// (the signature of a name truncated at its distinguishing token — cut off at
-// "Mark ", where every Mark variant is equally near), narrow to the parts at the
-// tooltip's RE LEVEL: the datamined tier authoritatively separates same-family
-// variants (TIE Elite Capacitor Mark 1/2/3 = levels C3/C6/C9), so a level-6 scan
-// resolves to Mark 2. Still ambiguous → keep the OCR text. Crafted/REed never
-// reach here — Shipwrights name their own goods.
+// name of the same type. Two stages:
+//   (1) WHOLE type pool, full-string match within a tight length-scaled cap,
+//       accept a unique nearest. Handles clean scans and is robust to a
+//       mis-scanned level (level isn't consulted here).
+//   (2) Fallback when (1) has no unique winner — the signature of a name
+//       truncated at its distinguishing token ("…Limited Mark" with the
+//       "IV Capacitor" tail dropped, or cut off at "Mark " so every Mark ties).
+//       Narrow to the parts at the tooltip's TYPE + RE LEVEL — a pool of ~10
+//       (max 17) — and PREFIX-match: compare the OCR text against each
+//       candidate's leading region, so the missing tail costs nothing. The
+//       datamined tier separates same-family variants (TIE Elite Capacitor
+//       Mark 1/2/3 = C3/C6/C9 → a level-6 scan is Mark 2). Require a clear
+//       unique winner; else keep the OCR text. Crafted/REed never reach here.
 function canonicalLootedName(title, type, lvl){
   const L=letterOf(type); if(!L||!BRANDS[L]) return null;
   const q=canonFold(title); if(q.length<5) return null;
+  // (1) whole-type unique nearest
   const cap=Math.max(2, Math.floor(q.length*0.18));
-  const pick=pool=>{
-    const hits=[];
-    pool.forEach(p=>{ const cand=canonFold(p.n); if(cand.length<3) return;
-      const d=ocrEditDist(q, cand, cap); if(d<=cap) hits.push({name:p.n, d:d}); });
-    if(!hits.length) return null;
-    hits.sort((a,b)=>a.d-b.d);
+  let hits=[];
+  for(const k in BRANDS[L]) for(const p of BRANDS[L][k]){
+    const cand=canonFold(p.n); if(cand.length<3) continue;
+    const d=ocrEditDist(q, cand, cap); if(d<=cap) hits.push({name:p.n, d:d});
+  }
+  if(hits.length){ hits.sort((a,b)=>a.d-b.d);
     const tied=hits.filter(h=>h.d===hits[0].d);
-    return tied.length===1 ? tied[0].name : null;
-  };
-  const whole=[]; for(const k in BRANDS[L]) whole.push(...BRANDS[L][k]);
-  const wide=pick(whole); if(wide) return wide;               // unique across the type
-  const n=parseInt(lvl,10);                                   // tie → narrow by RE level
-  if(!isNaN(n) && BRANDS[L][String(n)]) return pick(BRANDS[L][String(n)]);
-  return null;                                                // still ambiguous → keep OCR
+    if(tied.length===1) return tied[0].name;
+  }
+  // (2) type+level prefix match for a truncated name (needs enough prefix to be safe)
+  const n=parseInt(lvl,10);
+  if(q.length>=10 && !isNaN(n) && BRANDS[L][String(n)]){
+    const cap2=Math.max(2, Math.floor(q.length*0.20));
+    let best=null, bestD=cap2+1, second=cap2+1;
+    for(const p of BRANDS[L][String(n)]){
+      const cand=canonFold(p.n);
+      if(cand.length < q.length-2) continue;                  // template must be ≥ the OCR text (a truncation)
+      const pref=cand.slice(0, Math.min(cand.length, q.length+2));
+      const d=ocrEditDist(q, pref, cap2); if(d>cap2) continue;
+      if(d<bestD){ second=bestD; bestD=d; best=p.n; } else if(d<second){ second=d; }
+    }
+    if(best && bestD<second) return best;                     // clear unique winner
+  }
+  return null;                                                // ambiguous / unrecoverable → keep OCR
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
@@ -3812,8 +3851,8 @@ function renderGuide(){
       <tr><td>General</td><td><code>Armor</code>, <code>Hitpoints</code>, <code>Mass</code>, <code>ReactorEnergyDrain</code> <span style="color:var(--txt-dim)">(drain omitted for Reactors &amp; Armor plates)</span></td></tr>
       <tr><td>Specific</td><td>Reactor: <code>ReactorGenerationRate</code> · Engine: <code>PitchRateMax YawRateMax RollRateMax EngineTopSpeed</code> · Shield: <code>FrontShieldHP BackShieldHP ShieldRechargeRate</code> · Capacitor: <code>CapacitorEnergy CapacitorRechargeRate</code> · Booster: <code>BoosterEnergy BoosterRechargeRate BoosterEnergyConsumption BoosterAcceleration TopBoosterSpeed</code> · Droid: <code>DroidCommandSpeed</code> · Weapon: <code>DamageMin DamageMax VsShields VsArmor EnergyPerShot RefireRate</code></td></tr>
     </table>
-    <p><b>Load CSV</b> replaces the dataset and keeps each row's Ownership. <b>Import Shared</b> appends another player's file, forces every imported part to <code>Observed</code>, and skips any part whose observed stats match one you already have (or a duplicate within the same file) — you only need one copy of each observed part. <b>Export CSV</b> writes the full schema so others can import your dataset.</p>
-    <p><b>Community Sync</b> pulls the shared component pool published online and merges it exactly like Import Shared — everything arrives as <code>Observed</code> and parts you already have are skipped, so it is always safe to click. <b>Export for Sync</b> writes a clean community file: every component forced to <code>Observed</code> with personal loadouts and settings stripped, ready to contribute back to the shared pool.</p>
+    <p><b>Load CSV</b> replaces the dataset and keeps each row's Ownership. <b>Import Shared</b> appends another player's file, forces every imported part to <code>Observed</code>, and matches parts by their stats (not their name) — a part whose stats you already have is not re-added, and if the incoming copy has a cleaner name it updates your Observed row in place (your own <code>Owned</code> parts are never renamed). You only need one copy of each observed roll. <b>Export CSV</b> writes the full schema so others can import your dataset.</p>
+    <p><b>Community Sync</b> pulls the shared component pool published online and merges it exactly like Import Shared — everything arrives as <code>Observed</code>, parts you already have are skipped, and corrected names replace older ones, so it is always safe to click. <b>Export for Sync</b> writes a clean community file: every component forced to <code>Observed</code> with personal loadouts and settings stripped, ready to contribute back to the shared pool.</p>
 
     <h2>Weapon launch rounding</h2>
     <label class="checkbox" style="margin:8px 0"><input type="checkbox" id="round-toggle"> Apply in-game launch rounding to Vs.&nbsp;Shields, Vs.&nbsp;Armor &amp; Refire Rate (nearest 0.01) before scoring</label>
