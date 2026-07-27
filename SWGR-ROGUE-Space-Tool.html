@@ -2353,7 +2353,7 @@ function parseTooltip(raw){
  // The review modal still shows the result for the user to override.
  let nameOut=title, ocrOrig=null;
  if(source==='Looted' && title){
-   const canon=canonicalLootedName(title, type);
+   const canon=canonicalLootedName(title, type, reLvl||certLvl);
    if(canon && canon!==title){ nameOut=canon; ocrOrig=title; }
  }
  // Faithful "what OCR actually saw" — backward-compat defaults (copying a
@@ -2806,29 +2806,33 @@ function templateRELevel(name, type){
 function canonFold(s){ return String(s||'').toUpperCase().replace(/¥/g,'V').replace(/[^A-Z0-9]/g,'').replace(/Y/g,'V').replace(/1/g,'I').replace(/0/g,'O'); }
 // Recover a LOOTED part's canonical datamined name from OCR damage. A looted
 // name IS a brandslist template, so match the OCR title to the nearest BRANDS
-// name of the same type by folded edit distance. Accept ONLY a unique nearest
-// within a length-scaled cap; on any tie, keep the OCR name untouched rather than
-// guess — a tie is the signature of a name truncated at its distinguishing token
-// (e.g. cut off at "Mark ", where every Mark variant is equally near), and the
-// tooltip's level can't safely break it (a part's RE level ≠ its datamined tier
-// on a mismatched roll). Crafted/REed never reach here — Shipwrights name their
-// own goods. Deeply truncated names simply stay as scanned for a manual fix.
-function canonicalLootedName(title, type){
+// name of the same type by folded edit distance, within a length-scaled cap.
+// Two stages: (1) match the WHOLE type pool and accept a unique nearest — this
+// handles the common case and is robust to a mis-scanned level. (2) If that ties
+// (the signature of a name truncated at its distinguishing token — cut off at
+// "Mark ", where every Mark variant is equally near), narrow to the parts at the
+// tooltip's RE LEVEL: the datamined tier authoritatively separates same-family
+// variants (TIE Elite Capacitor Mark 1/2/3 = levels C3/C6/C9), so a level-6 scan
+// resolves to Mark 2. Still ambiguous → keep the OCR text. Crafted/REed never
+// reach here — Shipwrights name their own goods.
+function canonicalLootedName(title, type, lvl){
   const L=letterOf(type); if(!L||!BRANDS[L]) return null;
   const q=canonFold(title); if(q.length<5) return null;
   const cap=Math.max(2, Math.floor(q.length*0.18));
-  const hits=[];
-  for(const lvl in BRANDS[L]){
-    for(const p of BRANDS[L][lvl]){
-      const cand=canonFold(p.n); if(cand.length<3) continue;
-      const d=ocrEditDist(q, cand, cap);
-      if(d<=cap) hits.push({name:p.n, d:d});
-    }
-  }
-  if(!hits.length) return null;
-  hits.sort((a,b)=>a.d-b.d);
-  const tied=hits.filter(h=>h.d===hits[0].d);
-  return tied.length===1 ? tied[0].name : null;               // unique nearest, else keep OCR
+  const pick=pool=>{
+    const hits=[];
+    pool.forEach(p=>{ const cand=canonFold(p.n); if(cand.length<3) return;
+      const d=ocrEditDist(q, cand, cap); if(d<=cap) hits.push({name:p.n, d:d}); });
+    if(!hits.length) return null;
+    hits.sort((a,b)=>a.d-b.d);
+    const tied=hits.filter(h=>h.d===hits[0].d);
+    return tied.length===1 ? tied[0].name : null;
+  };
+  const whole=[]; for(const k in BRANDS[L]) whole.push(...BRANDS[L][k]);
+  const wide=pick(whole); if(wide) return wide;               // unique across the type
+  const n=parseInt(lvl,10);                                   // tie → narrow by RE level
+  if(!isNaN(n) && BRANDS[L][String(n)]) return pick(BRANDS[L][String(n)]);
+  return null;                                                // still ambiguous → keep OCR
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
