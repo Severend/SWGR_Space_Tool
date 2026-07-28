@@ -493,6 +493,25 @@
   .src-kash .tok{color:var(--cyan)}
   .src-empty{color:var(--txt-dim);font-size:12px;margin:6px 2px}
   .src-kills{font-family:var(--mono);color:#fff;font-weight:600}
+  /* Expandable enemy rows: summary shows the ranking columns, expand for the
+     named parts that enemy drops (mirrors the Stat Overview level drawer). */
+  .src-enemy-head,.src-enemy>summary{display:grid;grid-template-columns:16px 1fr auto auto;gap:10px;align-items:center}
+  .src-enemy-head{padding:2px 12px 6px;font-size:9px;color:var(--txt-dim);letter-spacing:.5px;text-transform:uppercase}
+  .src-enemy-head span:nth-child(3),.src-enemy-head span:nth-child(4){text-align:right}
+  .src-enemy{border:1px solid var(--line);border-radius:8px;margin-bottom:6px;background:rgba(255,255,255,.012);overflow:hidden}
+  .src-enemy>summary{padding:8px 12px;cursor:pointer;list-style:none;user-select:none}
+  .src-enemy>summary::-webkit-details-marker{display:none}
+  .src-enemy>summary:hover{background:rgba(120,200,255,.06)}
+  .se-caret{display:inline-block;color:var(--cyan);transition:transform .15s;font-size:11px}
+  .src-enemy[open] .se-caret{transform:rotate(90deg)}
+  .se-name{color:#dbe7f5;font-weight:500}
+  .se-chance{font-family:var(--mono);color:var(--cyan);font-weight:700;text-align:right}
+  .se-kills{font-family:var(--mono);color:#fff;text-align:right}
+  .src-enemy .table-wrap{margin:0;border:none;border-top:1px solid var(--line);border-radius:0}
+  .src-parts{width:100%}
+  .src-parts td,.src-parts th{font-size:11px;padding:5px 10px}
+  .src-parts td.name-cell{white-space:normal;word-break:break-word}
+  .src-parts td:nth-child(2),.src-parts th:nth-child(2),.src-parts td:last-child,.src-parts th:last-child{text-align:right;white-space:nowrap}
   /* ---------- Part Hunter drawer (inverse of Source Hunter) ---------- */
   /* Its own drawer element so it can sit open beside the shared Source Hunter
      (#drawer). z-index above the Source Hunter mask(80)/drawer(90) so it stays
@@ -3232,16 +3251,27 @@ function kashComboOdds(type, lvl, cuts){
 }
 // Rank enemies to farm for a looted part meeting `cuts` at (type, lvl). Per
 // enemy: P(a kill yields a qualifier) ≈ Σ_parts dropRate·∏ brandStatProb.
+// Also carries the per-enemy parts breakdown so a row can expand to show which
+// named parts it drops, each with its drop rate and the chance a drop qualifies.
 function bestSourcesFor(type, lvl, cuts){
   const parts=partsAt(type,lvl); if(!parts.length||!cuts.length) return [];
-  const agg={};
+  const agg={};   // enemy -> {perKill, parts:[{name,path,drop,q,contrib}]}
   parts.forEach(p=>{
     let q=1; for(const c of cuts){ const pb=brandStatProb(p,type,c.key,c.value); if(pb==null){q=0;break;} q*=pb; }
     if(q<=0) return;
     const src=SOURCES[p.path]; if(!src) return;
-    src.forEach(s=>{ agg[s.e]=(agg[s.e]||0)+s.p*q; });   // identical names summed; distinct names kept
+    // SOURCES can list the same enemy twice for one part — sum its drop rate first.
+    const byEnemy={};
+    src.forEach(s=>{ byEnemy[s.e]=(byEnemy[s.e]||0)+s.p; });   // identical names summed; distinct kept
+    for(const e in byEnemy){
+      const drop=byEnemy[e];
+      const a=agg[e]||(agg[e]={perKill:0, parts:[]});
+      a.perKill += drop*q;
+      a.parts.push({name:p.n, path:p.path, drop, q, contrib:drop*q});
+    }
   });
-  return Object.keys(agg).map(e=>({e, perKill:agg[e], kills: agg[e]>0?1/agg[e]:Infinity}))
+  return Object.keys(agg).map(e=>{ const a=agg[e]; a.parts.sort((x,y)=>y.contrib-x.contrib);
+    return {e, perKill:a.perKill, kills:a.perKill>0?1/a.perKill:Infinity, parts:a.parts}; })
     .sort((a,b)=>b.perKill-a.perKill);
 }
 
@@ -3400,12 +3430,26 @@ function renderSourcesResults(){
     kashHtml='<div class="src-kash">Kash Nunes roll: <b>1-in-∞</b> <span style="opacity:.65">— beyond this pool&rsquo;s reach</span></div>';
   }
   const rank=bestSourcesFor(type,lvl,cuts);
+  const pctFmt=v=>{ const pc=v*100; return pc>=10?pc.toFixed(0):pc>=1?pc.toFixed(1):pc>=0.01?pc.toFixed(2):pc.toFixed(3); };
   let tbl;
   if(rank.length){
-    tbl='<div class="table-wrap"><table class="ov-table src-table"><thead><tr><th>Enemy</th><th>≈ chance/kill</th><th>~ kills to one</th></tr></thead><tbody>'+
-      rank.slice(0,15).map(r=>{ const pc=r.perKill*100; const disp=pc>=10?pc.toFixed(0):pc>=1?pc.toFixed(1):pc>=0.01?pc.toFixed(2):pc.toFixed(3);
-        return '<tr><td class="name-cell">'+escapeHtml(r.e)+'</td><td><b style="font-family:var(--mono);color:var(--cyan)">'+disp+'%</b></td><td><span class="src-kills">'+(isFinite(r.kills)?tokenNumFmt(r.kills):'∞')+'</span></td></tr>'; }).join('')+
-      '</tbody></table></div>';
+    tbl='<div class="src-enemy-head"><span></span><span>Enemy</span><span>≈ chance/kill</span><span>~ kills to one</span></div>'+
+      rank.slice(0,15).map(r=>{
+        // expand to the named parts this enemy drops, each with its drop rate and
+        // the chance a drop meets the cut (the two factors behind chance/kill).
+        const partRows=r.parts.map(p=>
+          '<tr><td class="name-cell">'+escapeHtml(p.name)+'</td>'+
+          '<td><b style="font-family:var(--mono);color:var(--cyan)">'+pctFmt(p.drop)+'%</b></td>'+
+          '<td><span class="src-kills" style="color:var(--txt-dim)">'+pctFmt(p.q)+'%</span></td></tr>').join('');
+        return '<details class="src-enemy"><summary>'+
+            '<span class="se-caret">▸</span>'+
+            '<span class="se-name">'+escapeHtml(r.e)+'</span>'+
+            '<span class="se-chance">'+pctFmt(r.perKill)+'%</span>'+
+            '<span class="se-kills">'+(isFinite(r.kills)?tokenNumFmt(r.kills):'∞')+'</span>'+
+          '</summary>'+
+          '<div class="table-wrap"><table class="ov-table src-table src-parts"><thead><tr><th>Named part</th><th>≈ drop/kill</th><th>meets cut</th></tr></thead><tbody>'+partRows+'</tbody></table></div>'+
+        '</details>';
+      }).join('');
   } else {
     tbl='<p class="src-empty">No drop source reaches this target — loosen a slider or drop a stat.</p>';
   }
