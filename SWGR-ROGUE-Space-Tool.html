@@ -493,6 +493,61 @@
   .src-kash .tok{color:var(--cyan)}
   .src-empty{color:var(--txt-dim);font-size:12px;margin:6px 2px}
   .src-kills{font-family:var(--mono);color:#fff;font-weight:600}
+  /* ---------- Part Hunter drawer (inverse of Source Hunter) ---------- */
+  /* Its own drawer element so it can sit open beside the shared Source Hunter
+     (#drawer). z-index above the Source Hunter mask(80)/drawer(90) so it stays
+     visible + interactive while a paired Source Hunter is open. */
+  #ph-drawer{z-index:95}
+  #ph-mask{z-index:85}
+  /* Paired: shift Part Hunter left so the Source Hunter (#drawer, right:0) sits
+     beside it. Below ~1180px both narrow to fit side-by-side. */
+  body.ph-paired #ph-drawer{right:min(560px,94vw)}
+  @media (max-width:1180px){
+    body.ph-paired #ph-drawer{width:48vw;right:50vw}
+    body.ph-paired #drawer{width:50vw}
+  }
+  .ph-controls{display:flex;flex-direction:column;gap:12px;margin-bottom:6px}
+  .ph-controls label.field{min-width:150px}
+  .ph-controls select{width:100%}
+  .ph-mode{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ph-mode .chip{cursor:pointer}
+  .ph-within{display:flex;align-items:center;gap:10px;flex:1;min-width:180px}
+  .ph-within input[type=range]{flex:1;min-width:80px;accent-color:var(--cyan)}
+  .ph-within .ph-pctval{font-family:var(--mono);font-size:12px;color:var(--cyan);min-width:42px;text-align:right}
+  .ph-within.off{opacity:.35;pointer-events:none}
+  /* Target rows: reuse the Source Hunter .src-tgt grid shape (checkbox + name + value). */
+  .ph-targets{display:flex;flex-direction:column;gap:8px;margin:4px 0 2px}
+  .ph-tgt{display:grid;grid-template-columns:18px minmax(120px,1fr) 96px;align-items:center;gap:6px 10px}
+  .ph-tgt.off{opacity:.45}
+  .ph-tgt input[type=checkbox]{accent-color:var(--cyan);cursor:pointer}
+  .ph-tgt .pt-name{font-size:12px;color:#cfe0f1;font-weight:500;display:flex;align-items:center;gap:4px}
+  .ph-tgt .pt-val{width:90px;padding:4px 6px;font-size:11px;text-align:right}
+  /* Result cards — modeled on the level drawer's .lvl-part / .dist-grid. */
+  .ph-card{border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:10px;background:rgba(255,255,255,.012)}
+  .ph-card.miss{opacity:.62}
+  .ph-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+  .ph-src{font-weight:700;font-size:13px;color:#eaf2fb}
+  .ph-src-l{color:#78c8ff} .ph-src-c{color:#7cdc96} .ph-src-r{color:#be96ff}
+  .ph-lvl{font-family:var(--mono);font-size:11px;color:var(--txt-dim)}
+  .ph-wgrade{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10px;color:var(--txt-dim)}
+  .ph-cost{font-family:var(--mono);font-size:11px;color:var(--txt-dim);margin:-2px 0 8px;line-height:1.5}
+  .ph-cost b{color:var(--amber)} .ph-cost .cr{color:var(--cyan)}
+  .ph-flag{background:rgba(255,168,40,.1);border:1px solid rgba(255,168,40,.4);border-radius:6px;padding:6px 9px;margin:-2px 0 9px;font-size:11px;line-height:1.45;color:#ffcf8a}
+  .ph-grid{display:flex;flex-wrap:wrap;gap:8px}
+  /* One stat cell: grade chip on top, its range (overview style) underneath. */
+  .ph-stat{display:flex;flex-direction:column;gap:3px;min-width:96px;border:1px solid transparent;border-radius:7px;padding:5px 7px;background:none;text-align:left;cursor:pointer;transition:background .12s,border-color .12s}
+  .ph-stat:hover{background:rgba(120,200,255,.07);border-color:var(--line2)}
+  .ph-stat.tgt{border-color:rgba(120,200,255,.4);background:rgba(120,200,255,.05)}
+  .ph-stat.tgt.fail{border-color:rgba(255,120,120,.45);background:rgba(255,120,120,.06)}
+  .ph-stat .ps-top{display:flex;align-items:center;gap:5px}
+  .ph-stat .ps-lbl{font-size:9.5px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.4px}
+  .ph-stat .ps-range{font-family:var(--mono);font-size:11.5px;color:#dbe7f5}
+  .ph-stat .ps-go{font-size:8.5px;color:var(--cyan);opacity:0;letter-spacing:.3px}
+  .ph-stat:hover .ps-go{opacity:.9}
+  .ph-empty{color:var(--txt-dim);font-size:12px;margin:8px 2px}
+  .ph-card .ph-math{margin:2px 0 10px}
+  .ph-card .ph-math summary{font-size:10.5px}
+  .ph-card .ph-math table th,.ph-card .ph-math table td{font-size:10.5px;padding:2px 6px}
   /* ---------- overview level slider + clickable headers + level drawer ---------- */
   .ov-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin:0 0 18px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.015)}
   .lvl-slider{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -761,6 +816,7 @@
       <button class="btn" id="btn-export-sync"><span class="ico">☁</span> Export for Sync</button>
       <button class="btn" id="btn-weights"><span class="ico">⚖</span> Weighting</button>
       <button class="btn" id="btn-hunter"><span class="ico">◎</span> Source Hunter</button>
+      <button class="btn" id="btn-parthunter"><span class="ico">◈</span> Part Hunter</button>
       <div class="spacer"></div>
       <button class="btn danger ghost" id="btn-clear">Clear All</button>
     </div>
@@ -1037,6 +1093,19 @@
     <div class="meta" id="re-find-sub"></div>
   </div>
   <div class="drawer-body" id="re-find-body"></div>
+</aside>
+
+<!-- Part Hunter drawer (can be open at the same time as the Source Hunter #drawer) -->
+<div class="drawer-mask" id="ph-mask"></div>
+<aside class="drawer" id="ph-drawer">
+  <div class="drawer-head">
+    <div class="drawer-nav">
+      <button class="icon-btn x" id="ph-close" title="Close (Esc)">✕</button>
+    </div>
+    <h2>Part Hunter</h2>
+    <div class="meta" id="ph-sub">Which acquisition tier can give you the part you need?</div>
+  </div>
+  <div class="drawer-body" id="ph-body"></div>
 </aside>
 
 <!-- Add/Edit modal -->
@@ -1874,6 +1943,9 @@ function drawerStep(delta){
 function closeDrawer(){
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawer-mask').classList.remove('open');
+  // If this drawer was a Source Hunter paired beside Part Hunter, un-shift Part
+  // Hunter (which stays open) back to the edge.
+  document.body.classList.remove('ph-paired');
   selectedIndex=null; srcDrawer=null; renderTable();
 }
 function fmt(v,dec){ if(v===''||v===null||v===undefined||isNaN(v))return '—'; return Number(v).toLocaleString(undefined,{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
@@ -3185,8 +3257,8 @@ function openSourceHunter(){
   renderSourceDrawer(type, lvl, null);
 }
 // Stat Overview entry point: pre-fill type, level and the clicked stat's target.
-function openSourcesDrawer(type, lvl, clickedKey, startPct){
-  renderSourceDrawer(type, Number(lvl), clickedKey==null?null:{key:clickedKey, pct:startPct});
+function openSourcesDrawer(type, lvl, clickedKey, startPct, rawValue){
+  renderSourceDrawer(type, Number(lvl), clickedKey==null?null:{key:clickedKey, pct:startPct, value:(rawValue==null?null:rawValue)});
 }
 // First component type that has any looted drop data to hunt (for a blank open).
 function defaultHuntType(){
@@ -3226,14 +3298,18 @@ function renderSourceDrawer(type, lvl, preselect){
     let rows='';   // preselect (from a Stat Overview click) toggles just that stat on
     tgts.forEach(t=>{
       const on=preselect && preselect.key===t.key;
-      const pct=on ? Math.max(0,Math.min(100,Number(preselect.pct)||0)) : 85;
+      // Part Hunter passes a raw target value; derive the slider from it and keep
+      // the typed value verbatim (data-preval) so it isn't rounded to a Bo% step.
+      const preVal = on && preselect.value!=null && !isNaN(preselect.value) ? Number(preselect.value) : null;
+      let pct = on ? (preVal!=null ? (rangePosition(t.eff,t.def.better,preVal)) : Number(preselect.pct)) : 85;
+      pct = Math.round(Math.max(0,Math.min(100, (pct==null||isNaN(pct))?85:pct)));
       const arrow=t.def.better==='high'?'<span style="color:var(--green)">↑</span>':'<span style="color:var(--amber)">↓</span>';
-      rows+='<div class="src-tgt'+(on?'':' off')+'" data-key="'+t.key+'">'+
+      rows+='<div class="src-tgt'+(on?'':' off')+'" data-key="'+t.key+'"'+(preVal!=null?' data-preval="1"':'')+'>'+
         '<input type="checkbox" '+(on?'checked':'')+' data-role="tog">'+
         '<span class="st-name">'+t.def.label+' '+arrow+'</span>'+
         '<span class="st-slide">'+
           '<input type="range" min="0" max="100" step="1" value="'+pct+'" data-role="pct">'+
-          '<input type="text" inputmode="decimal" class="st-valin" data-role="val" title="Type a target stat value">'+
+          '<input type="text" inputmode="decimal" class="st-valin" data-role="val" title="Type a target stat value"'+(preVal!=null?' value="'+preVal.toFixed(t.def.dec)+'"':'')+'>'+
           '<span class="st-band"></span>'+
         '</span>'+
       '</div>';
@@ -3252,7 +3328,7 @@ function renderSourceDrawer(type, lvl, preselect){
 
   const wrap=document.getElementById('src-targets');
   if(wrap){
-    wrap.querySelectorAll('.src-tgt').forEach(r=>syncSrcTgtLabel(r));
+    wrap.querySelectorAll('.src-tgt').forEach(r=>syncSrcTgtLabel(r, r.hasAttribute('data-preval')));
     wrap.addEventListener('input', function(e){
       const row=e.target.closest('.src-tgt'); if(!row) return;
       const role=e.target.dataset.role;
@@ -3334,6 +3410,350 @@ function renderSourcesResults(){
     tbl='<p class="src-empty">No drop source reaches this target — loosen a slider or drop a stat.</p>';
   }
   out.innerHTML=kashHtml+tbl;
+}
+
+/* ============================================================
+   PART HUNTER — the inverse of Source Hunter.
+   Given a component TYPE and one or more target STAT VALUES (not grades, no
+   fixed level), scan every acquisition tier — Looted / Crafted / REed at each
+   level — and rank which tiers can theoretically produce a qualifying part.
+   Ranges come from the same functions the Stat Overview uses (effectiveDMRange
+   / reedRange / craftedRange). Clicking a result's stat range opens Source
+   Hunter BESIDE this drawer, pre-aimed at that type + level + stat + value.
+   ============================================================ */
+const TOKEN_CREDITS=30;    // theoretical credits per Kash Nunes token (user rate)
+const PH_REWARD_PRICE=250000;  // flat market estimate for a reward donor part (credits)
+const PH_REWARD_FIT=0.25;      // a reward brand "fits" a donor req if it rolls it ≥ this often
+// One entry per acquisition source: its display class + the range fn to query.
+const PH_SOURCES=[
+  {key:'Looted',  cls:'ph-src-l', rangeFn:(t,l,k)=>effectiveDMRange(t,l,k,{})},
+  {key:'REed',    cls:'ph-src-r', rangeFn:(t,l,k)=>reedRange(t,l,k,{})},
+  {key:'Crafted', cls:'ph-src-c', rangeFn:(t,l,k)=>craftedRange(t,l,k,{})},
+];
+// {type, mode:'abs'|'within', pct, targets:{key:{on,val}}}. targets persist
+// across type switches (unused keys are simply ignored by the current type).
+let phState={type:null, mode:'abs', pct:10, targets:{}};
+
+function openPartHunter(){
+  if(!phState.type) phState.type=defaultHuntType();
+  renderPartHunter();
+  document.getElementById('ph-drawer').classList.add('open');
+  document.getElementById('ph-mask').classList.add('open');
+}
+function closePartHunter(){
+  const paired=document.body.classList.contains('ph-paired');
+  document.getElementById('ph-drawer').classList.remove('open');
+  document.getElementById('ph-mask').classList.remove('open');
+  document.body.classList.remove('ph-paired');
+  if(paired) closeDrawer();   // also dismiss the Source Hunter opened beside it
+}
+// Active constraints = toggled-on target rows with a numeric value.
+function phActiveTargets(type){
+  const out=[];
+  statsForType(type).forEach(k=>{
+    const t=phState.targets[k]; if(!t||!t.on) return;
+    const v=parseFloat(t.val); if(isNaN(v)) return;
+    out.push({key:k, def:STAT_DEFS[k], val:v});
+  });
+  return out;
+}
+// Evaluate one stat's achievable range against a target. Returns whether the
+// tier's BEST roll can reach it (qualifies) and coverage = fraction of the
+// range that satisfies the goal (ranking reward for reliability).
+function phEvalStat(range, def, val, mode, pct){
+  if(!range || range.min==null || range.max==null) return null;
+  const better=def.better, T=Number(val), span=range.max-range.min;
+  if(mode==='within'){
+    const w=Math.abs(T)*pct/100, lo=T-w, hi=T+w;
+    const ov=Math.max(0, Math.min(range.max,hi)-Math.max(range.min,lo));
+    const q = span<=0 ? (range.min>=lo && range.min<=hi) : ov>0;
+    return {qualifies:q, coverage: span<=0 ? (q?1:0) : Math.max(0,Math.min(1,ov/span))};
+  }
+  // absolute threshold: meet or beat
+  if(better==='low'){
+    const q = range.min<=T;
+    const cov = span<=0 ? (q?1:0) : Math.max(0,Math.min(1,(Math.min(range.max,T)-range.min)/span));
+    return {qualifies:q, coverage:cov};
+  }
+  const q = range.max>=T;
+  const cov = span<=0 ? (q?1:0) : Math.max(0,Math.min(1,(range.max-Math.max(range.min,T))/span));
+  return {qualifies:q, coverage:cov};
+}
+// Bo% grade of a tier's best-achievable roll, graded (uncapped) against the
+// FINISHED-parts reference (finalDmLookup — Crafted+REed range) for that
+// type+level, so the card's headline Weighted Grade reads "how good is this
+// tier's ceiling vs the best finished parts of this tier." Falls back to the
+// looted range, then the tier's own range, where no finished seed exists.
+function phStatGrade(type,lvl,key,def,tierRange){
+  const bestVal = def.better==='low' ? tierRange.min : tierRange.max;
+  const ref = finalDmLookup(type,lvl,key,{}) || effectiveDMRange(type,lvl,key,{}) || tierRange;
+  return uncappedBoPct(ref, def.better, bestVal);
+}
+// The cheapest reward (non-Kash) brand at (type,lvl) that can supply a donor
+// rolling `donorVal`. Reward brands (mission rewards / Kessel / crates) aren't
+// token-rolled — they sell flat on the market — so a rare-by-Kash-odds stat that a
+// reward part covers ISN'T actually rare. Returns {brand, prob} or null.
+function phRewardDonor(type, lvl, key, donorVal){
+  const parts=partsAt(type,lvl); if(!parts.length) return null;
+  const kash=new Set(kashPoolBrands(type,lvl)||[]);   // same object refs as partsAt
+  let best=null;
+  parts.forEach(p=>{
+    if(kash.has(p)) return;                 // Kash-sold → priced by the roll model, not here
+    const prob=brandStatProb(p,type,key,donorVal);
+    if(prob!=null && prob>=PH_REWARD_FIT && (!best||prob>best.prob)) best={brand:p, prob};
+  });
+  return best;
+}
+// Theoretical REed donor cost: per selected stat, the CHEAPER of (a) Kash-rolling a
+// single-stat donor good enough or (b) buying a reward part that covers it flat
+// (~PH_REWARD_PRICE). Flags when the number of demanding stats exceeds the donor
+// count (== RE level), forcing rarer multi-stat donors — cost is then a floor.
+// The donor is a LOOTED drop and RE multiplies the best donor stat by (1 + bonus),
+// so a finished target T only needs a donor rolling T ÷ (1 + dir·b) (mirrors the
+// effectiveDMRange back-inference) — a much easier roll than T itself.
+function phReedCost(type, lvl, targets){
+  const L=parseInt(lvl,10); if(isNaN(L)) return null;
+  const cost=tokenRollCost(L);
+  const b=reBonusPercent(L, true)/100;   // level's max achievable RE bonus
+  let totalCr=0, kashTokens=0, rewardCount=0, demanding=0, anyInf=false;
+  const rows=targets.map(t=>{
+    const dir = t.def.better==='low' ? -1 : 1;
+    const denom = 1 + dir*b;
+    const donorVal = denom>0 ? t.val/denom : t.val;   // pre-RE value the donor must roll
+    const odds=kashStatOdds(type, L, t.key, t.def.better, donorVal);
+    const p = odds ? odds.p : 0;
+    const kashTk = p>0 ? cost/p : Infinity;
+    const kashCr = isFinite(kashTk) ? kashTk*TOKEN_CREDITS : Infinity;
+    const reward = phRewardDonor(type, L, t.key, donorVal);   // {brand,prob}|null
+    const rewardCr = reward ? PH_REWARD_PRICE : Infinity;
+    // cheapest realistic acquisition of a donor for this stat
+    const viaReward = rewardCr < kashCr;
+    const via = viaReward ? 'reward' : 'kash';
+    const credits = viaReward ? rewardCr : kashCr;
+    const tk = viaReward ? 0 : kashTk;
+    if(!isFinite(credits)) anyInf=true;
+    else { totalCr+=credits; if(viaReward) rewardCount++; else kashTokens+=tk; }
+    // demanding = needs its own dedicated donor: a reward part always does; a Kash
+    // roll only when it's worse-than-even odds (a common stat rides any donor).
+    const dem = viaReward ? true : (p<0.5);
+    if(dem) demanding++;
+    return {key:t.key, label:t.def.label, target:t.val, donorVal, p, via,
+            tokens:tk, credits, rewardBrand: reward?reward.brand.n:null,
+            demanding:dem, poolN:odds?odds.n:0};
+  });
+  const flag = demanding>L
+    ? demanding+' demanding stat(s) but Level '+L+' allows only '+L+' donor(s) — some donors must be multi-stat (rarer); cost is a floor.'
+    : null;
+  return {credits: anyInf?Infinity:totalCr, kashTokens, rewardCount,
+          rows, rollCost:cost, level:L, bonusPct:Math.round(reBonusPercent(L,true)), flag};
+}
+// Build every (source × level) candidate for the type; evaluate the active
+// targets; return {matched:[...], near:[...]} each sorted best-first.
+function phCandidates(type){
+  const targets=phActiveTargets(type);
+  const keys=statsForType(type);
+  const cands=[];
+  PH_SOURCES.forEach(src=>{
+    for(let lvl=1; lvl<=10; lvl++){
+      const ranges={}, grades={};
+      let any=false;
+      keys.forEach(k=>{
+        const rng=src.rangeFn(type,lvl,k); if(!rng) return;
+        any=true; ranges[k]=rng; grades[k]=phStatGrade(type,lvl,k,STAT_DEFS[k],rng);
+      });
+      if(!any) continue;
+      // weighted grade over all stats with a grade (matches the main-table metric)
+      let wsum=0, wtot=0;
+      keys.forEach(k=>{ const g=grades[k]; if(g==null) return; const w=(WEIGHTS[type]&&WEIGHTS[type][k]!=null)?WEIGHTS[type][k]:defaultWeight(type,k); wsum+=Math.max(0,Math.min(100,g))*w; wtot+=w; });
+      const weightedGrade = wtot? wsum/wtot : null;
+      // score the active constraints
+      const evals={}; let cov=0, failed=0, missing=0;
+      targets.forEach(t=>{
+        const rng=ranges[t.key];
+        if(!rng){ missing++; return; }
+        const ev=phEvalStat(rng, t.def, t.val, phState.mode, phState.pct);
+        evals[t.key]=ev; cov+=ev.coverage; if(!ev.qualifies) failed++;
+      });
+      const matched = targets.length>0 && failed===0 && missing===0;
+      const fit = targets.length ? cov/targets.length : 0;
+      const reed = src.key==='REed' ? phReedCost(type,lvl,targets) : null;
+      cands.push({source:src.key, cls:src.cls, lvl,
+        label:(src.key==='Crafted'?'Cert Lvl ':'Lvl ')+lvl,
+        ranges, grades, evals, weightedGrade, fit, matched,
+        miss: failed+missing, reed});
+    }
+  });
+  const matched=cands.filter(c=>c.matched).sort((a,b)=> b.fit-a.fit || a.lvl-b.lvl);
+  const near=cands.filter(c=>!c.matched).sort((a,b)=> a.miss-b.miss || b.fit-a.fit || a.lvl-b.lvl);
+  return {matched, near, targets};
+}
+// Direction-aware range in the Stat Overview style (low-better shows hi–lo).
+function phRangeHtml(range, def){
+  if(range.min===range.max) return fmt(range.mean!=null?range.mean:range.min, def.dec);
+  return def.better==='low'
+    ? fmt(range.max,def.dec)+'<span class="ov-dash">–</span>'+fmt(range.min,def.dec)
+    : fmt(range.min,def.dec)+'<span class="ov-dash">–</span>'+fmt(range.max,def.dec);
+}
+function phCardHtml(c, type){
+  const keys=statsForType(type);
+  let cells='';
+  keys.forEach(k=>{
+    const def=STAT_DEFS[k], rng=c.ranges[k], ev=c.evals[k], tgt=phState.targets[k];
+    const isTgt = tgt && tgt.on && !isNaN(parseFloat(tgt.val));
+    if(!rng){
+      if(!isTgt) return;   // only surface a missing stat when it was a constraint
+      cells+='<div class="ph-stat tgt fail"><div class="ps-top"><span class="gchip g-na" style="font-size:9px">—</span><span class="ps-lbl">'+def.label+'</span></div><span class="ps-range" style="color:var(--txt-dim)">no data</span></div>';
+      return;
+    }
+    const bestVal=def.better==='low'?rng.min:rng.max;
+    let chip='', mark='', cls='ph-stat', clickVal=bestVal, title='Hunt sources for '+def.label+' at Lvl '+c.lvl;
+    if(isTgt){
+      const T=parseFloat(tgt.val); clickVal=T;
+      // Required grade: where the REQUESTED value sits in this tier's range — the
+      // roll quality you'd need to reach it (low % = easy, high % = a great roll).
+      // This is the cutoff the user asked about (10000 reactor → Poor for R1).
+      const reqPct=rangePosition(rng, def.better, T), rb=rangeBandFromPct(reqPct);
+      chip='<span class="gchip '+rb.cls+'" style="font-size:9px">'+(reqPct==null?'—':Math.round(reqPct)+'%')+'</span>';
+      mark = ev&&ev.qualifies?'<span style="color:var(--green)">✓</span>':'<span style="color:var(--red)">✗</span>';
+      cls+= ev&&ev.qualifies?' tgt':' tgt fail';
+      title='Requested '+fmt(T,def.dec)+' → need a '+rb.name+' roll ('+(reqPct==null?'—':Math.round(reqPct)+'%')+' of this tier’s range) · click to hunt sources';
+    }
+    cells+='<button type="button" class="'+cls+'" data-key="'+k+'" data-lvl="'+c.lvl+'" data-val="'+clickVal+'" title="'+escapeHtml(title)+'">'+
+      '<div class="ps-top">'+chip+'<span class="ps-lbl">'+def.label+'</span>'+mark+'<span class="ps-go">⌖</span></div>'+
+      '<span class="ps-range">'+phRangeHtml(rng,def)+'</span>'+
+    '</button>';
+  });
+  const wg = c.weightedGrade;
+  const wgChip = wg==null ? '' : '<span class="gchip '+rangeBandFromPct(wg).cls+'" style="font-size:10px" title="Weighted grade of this tier’s best roll vs the finished (Crafted+REed) parts of this type at Lvl '+c.lvl+'">'+Math.round(wg)+'%</span>';
+  let cost='', flag='';
+  if(c.reed){
+    const r=c.reed;
+    const crStr = isFinite(r.credits) ? '~'+tokenNumFmt(r.credits)+' cr' : '∞';
+    const bits=[];
+    if(r.kashTokens>0) bits.push(tokenNumFmt(r.kashTokens)+' Kash tokens');
+    if(r.rewardCount>0) bits.push(r.rewardCount+'× reward part'+(r.rewardCount>1?'s':'')+'<span style="color:var(--amber)">*</span>');
+    const detail = bits.length ? ' <span style="opacity:.6">('+bits.join(' + ')+')</span>' : '';
+    cost='<div class="ph-cost">Donor cost ≈ <b class="cr">'+crStr+'</b>'+detail+'</div>'+phDonorMathHtml(c.reed);
+    if(c.reed.flag) flag='<div class="ph-flag">⚠ '+escapeHtml(c.reed.flag)+'</div>';
+  }
+  return '<div class="ph-card'+(c.matched?'':' miss')+'">'+
+    '<div class="ph-card-head"><span class="ph-src '+c.cls+'">'+c.source+'</span><span class="ph-lvl">'+c.label+'</span>'+
+      '<span class="ph-wgrade">GRADE '+wgChip+'</span></div>'+
+    cost+flag+
+    '<div class="ph-grid">'+cells+'</div>'+
+  '</div>';
+}
+// "Show the math behind this cost" — token rarity per required donor, mirroring
+// the drawer's gradeMathHtml layout (reuses .grade-math styling).
+function phDonorMathHtml(reed){
+  if(!reed || !reed.rows || !reed.rows.length) return '';
+  let hasReward=false;
+  const rows=reed.rows.map(r=>{
+    const def=STAT_DEFS[r.key];
+    const cr  = isFinite(r.credits)? tokenNumFmt(r.credits) : '∞';
+    const star = r.demanding ? ' <span style="color:var(--amber)" title="needs its own dedicated donor">★</span>' : '';
+    let via;
+    if(r.via==='reward'){ hasReward=true;
+      via='Reward part<span style="color:var(--amber)">*</span>'+(r.rewardBrand?' <span style="opacity:.6">('+escapeHtml(r.rewardBrand)+')</span>':''); }
+    else via='Kash roll '+(r.p>0?rarityLabel(1/r.p):'1-in-∞');
+    return '<tr><td>'+def.label+star+'</td><td>'+fmt(r.target,def.dec)+'</td><td>'+fmt(r.donorVal,def.dec)+'</td><td>'+via+'</td><td>'+cr+'</td></tr>';
+  }).join('');
+  const totCr=isFinite(reed.credits)?tokenNumFmt(reed.credits):'∞';
+  return '<details class="grade-math ph-math"><summary>Show the math behind this cost</summary>'+
+    '<div class="gm-formula">donor = finished ÷ (1 + '+reed.bonusPct+'% RE bonus) · cheapest of a Kash roll ('+reed.rollCost+'/roll × '+TOKEN_CREDITS+' cr) or a reward part (~'+tokenNumFmt(PH_REWARD_PRICE)+' cr flat)</div>'+
+    '<div class="gm-scroll"><table><thead><tr><th>Donor stat</th><th>Finished</th><th>Donor roll</th><th>Cheapest via</th><th>Credits</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+      '<tfoot><tr><td>Σ</td><td></td><td></td><td></td><td>'+totCr+'</td></tr></tfoot>'+
+    '</table></div>'+
+    (hasReward?'<div class="gm-result" style="color:var(--txt-dim);font-weight:400"><span style="color:var(--amber)">*</span> reward-part prices are market-dependent (~'+tokenNumFmt(PH_REWARD_PRICE)+' cr assumed)</div>':'')+
+    (reed.flag?'<div class="gm-result" style="color:#ffcf8a">★ one donor per rare stat isn’t possible here — '+escapeHtml(reed.flag)+'</div>':'')+
+  '</details>';
+}
+function phRenderResults(){
+  const out=document.getElementById('ph-results'); if(!out) return;
+  const type=canonType(phState.type);
+  const {matched, near, targets}=phCandidates(type);
+  if(!targets.length){ out.innerHTML='<p class="ph-empty">Toggle at least one stat and type a target value to see which tiers can produce the part.</p>'; return; }
+  let html='';
+  if(matched.length){
+    html+='<div class="box-label">MATCHING TIERS <span class="box-sub" style="text-transform:none;font-weight:400">best fit first · a target stat’s chip = the roll grade you’d need to hit it · click a range to hunt sources</span></div>';
+    html+=matched.map(c=>phCardHtml(c,type)).join('');
+  } else {
+    html+='<p class="ph-empty">No tier can fully reach every target. Loosen a threshold, widen the match %, or drop a stat — closest options below.</p>';
+  }
+  if(near.length){
+    html+='<div class="box-label" style="margin-top:16px">NEAR MISSES <span class="box-sub" style="text-transform:none;font-weight:400">fall short on, or lack data for, a target stat</span></div>';
+    html+=near.slice(0,8).map(c=>phCardHtml(c,type)).join('');
+  }
+  out.innerHTML=html;
+}
+// Type + mode + % + one target row per stat.
+function phControlsHtml(type){
+  const typeOpts=TYPE_LIST.map(t=>'<option value="'+escapeHtml(t)+'"'+(t===type?' selected':'')+'>'+escapeHtml(t)+'</option>').join('');
+  let rows='';
+  statsForType(type).forEach(k=>{
+    const def=STAT_DEFS[k], t=phState.targets[k]||{on:false,val:''};
+    const arrow=def.better==='high'?'<span style="color:var(--green)">↑</span>':'<span style="color:var(--amber)">↓</span>';
+    rows+='<div class="ph-tgt'+(t.on?'':' off')+'" data-key="'+k+'">'+
+      '<input type="checkbox" data-role="tog" '+(t.on?'checked':'')+'>'+
+      '<span class="pt-name">'+def.label+' '+arrow+'</span>'+
+      '<input type="text" inputmode="decimal" class="pt-val" data-role="val" placeholder="target" value="'+escapeHtml(t.val||'')+'">'+
+    '</div>';
+  });
+  const abs=phState.mode==='abs', within=phState.mode==='within';
+  return '<div class="ph-controls">'+
+    '<label class="field">COMPONENT TYPE<select id="ph-type-sel">'+typeOpts+'</select></label>'+
+    '<div class="ph-mode"><span class="fb-label">Match</span>'+
+      '<button type="button" class="chip'+(abs?' active':'')+'" data-mode="abs" title="Find tiers whose best roll meets or beats each target">Absolute threshold</button>'+
+      '<button type="button" class="chip'+(within?' active':'')+'" data-mode="within" title="Find tiers that can roll within ±X% of each target">Match within</button>'+
+      '<span class="ph-within'+(within?'':' off')+'"><input type="range" min="1" max="50" step="1" value="'+phState.pct+'" data-role="pct"><span class="ph-pctval">±'+phState.pct+'%</span></span>'+
+    '</div>'+
+    '<div class="box-label" style="margin-top:2px">TARGET STATS <span class="box-sub" style="text-transform:none;font-weight:400">toggle a stat and type the value you need</span></div>'+
+    '<div class="ph-targets">'+rows+'</div>'+
+  '</div>';
+}
+function renderPartHunter(){
+  const type=canonType(phState.type);
+  document.getElementById('ph-body').innerHTML=
+    phControlsHtml(type)+
+    '<div class="box-label" style="margin-top:14px">OPTIONS BY TIER</div>'+
+    '<div id="ph-results"></div>';
+  const body=document.getElementById('ph-body');
+  // type switch → full rebuild
+  const sel=document.getElementById('ph-type-sel');
+  sel.addEventListener('change',()=>{ phState.type=sel.value; renderPartHunter(); });
+  // mode chips
+  body.querySelectorAll('.ph-mode .chip').forEach(ch=>ch.addEventListener('click',()=>{
+    phState.mode=ch.dataset.mode;
+    body.querySelectorAll('.ph-mode .chip').forEach(c=>c.classList.toggle('active', c.dataset.mode===phState.mode));
+    body.querySelector('.ph-within').classList.toggle('off', phState.mode!=='within');
+    phRenderResults();
+  }));
+  // target rows + % slider (text/range/checkbox)
+  const onInput=e=>{
+    const role=e.target.dataset.role;
+    if(role==='pct'){ phState.pct=+e.target.value; const lab=body.querySelector('.ph-pctval'); if(lab) lab.textContent='±'+phState.pct+'%'; phRenderResults(); return; }
+    const row=e.target.closest('.ph-tgt'); if(!row) return;
+    const k=row.dataset.key; const t=phState.targets[k]||(phState.targets[k]={on:false,val:''});
+    if(role==='tog'){ t.on=e.target.checked; row.classList.toggle('off', !t.on); }
+    else if(role==='val'){ t.val=e.target.value; }
+    phRenderResults();
+  };
+  body.addEventListener('input', onInput);
+  body.addEventListener('change', e=>{ if(e.target.dataset.role==='tog') onInput(e); });
+  // click a result stat range → open Source Hunter beside this drawer
+  document.getElementById('ph-results').addEventListener('click', e=>{
+    const cell=e.target.closest('.ph-stat[data-key]'); if(!cell) return;
+    openSourcesFromPart(type, cell.dataset.lvl, cell.dataset.key, parseFloat(cell.dataset.val));
+  });
+  phRenderResults();
+}
+// Open Source Hunter beside Part Hunter, pre-aimed at a stat + raw target value.
+function openSourcesFromPart(type, lvl, key, val){
+  document.body.classList.add('ph-paired');
+  const eff=effectiveDMRange(type, Number(lvl), key, {});
+  const pct=eff!=null?rangePosition(eff, STAT_DEFS[key].better, val):null;
+  openSourcesDrawer(type, lvl, key, pct==null?85:pct, isNaN(val)?null:val);
 }
 
 /* ---------- Brand detail drawer: stat ranges + top drop sources ---------- */
@@ -4867,6 +5287,9 @@ document.getElementById('btn-clear-filters').addEventListener('click',()=>{
 // weighting modal
 document.getElementById('btn-weights').addEventListener('click',openWeights);
 document.getElementById('btn-hunter').addEventListener('click',openSourceHunter);
+document.getElementById('btn-parthunter').addEventListener('click',openPartHunter);
+document.getElementById('ph-close').addEventListener('click',closePartHunter);
+document.getElementById('ph-mask').addEventListener('click',closePartHunter);
 document.getElementById('weights-close').addEventListener('click',closeWeights);
 document.getElementById('weights-cancel').addEventListener('click',closeWeights);
 document.getElementById('weights-mask').addEventListener('click',e=>{ if(e.target.id==='weights-mask') closeWeights(); });
@@ -5017,7 +5440,7 @@ document.querySelectorAll('#comp-table thead th[data-sort]').forEach(th=>{
   });
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ closeModal(); closeDrawer(); closeWeights(); closeFindDrawer(); return; }
+  if(e.key==='Escape'){ closeModal(); closeDrawer(); closeWeights(); closeFindDrawer(); closePartHunter(); return; }
   // Arrow keys step through parts while the drawer is open (ignore when typing in a field).
   const drawerOpen=document.getElementById('drawer').classList.contains('open');
   const inField=e.target && e.target.closest && e.target.closest('input,select,textarea');
