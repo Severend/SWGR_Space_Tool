@@ -343,7 +343,9 @@
   .rd-head input{accent-color:var(--cyan);flex:0 0 auto}
   .rd-head .rdn{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
   .rd-head .rdl{font-family:var(--mono);color:var(--txt-dim);font-size:10.5px;flex:0 0 auto}
-  .rd-lock,.rd-reject{border:1px solid var(--line2);background:transparent;color:var(--txt-dim);border-radius:5px;cursor:pointer;font-size:10px;padding:2px 7px;line-height:1.4;flex:0 0 auto}
+  .rd-lock,.rd-reject,.rd-primary{border:1px solid var(--line2);background:transparent;color:var(--txt-dim);border-radius:5px;cursor:pointer;font-size:10px;padding:2px 7px;line-height:1.4;flex:0 0 auto}
+  .rd-primary.on{border-color:var(--cyan);color:var(--cyan);background:rgba(120,200,255,.1)}
+  .re-donor-row.re-primary-row{box-shadow:0 0 0 1px rgba(120,200,255,.25) inset}
   .re-donor-row.re-locked{border-color:var(--gold);box-shadow:0 0 0 1px rgba(255,210,74,.22) inset}
   .re-donor-row.re-locked .rd-lock{border-color:var(--gold);color:var(--gold)}
   .re-donor-row.re-rejected{border-color:var(--red);box-shadow:0 0 0 1px rgba(255,90,90,.18) inset;opacity:.65}
@@ -549,6 +551,8 @@
   .ph-src-l{color:#78c8ff} .ph-src-c{color:#7cdc96} .ph-src-r{color:#be96ff}
   .ph-lvl{font-family:var(--mono);font-size:11px;color:var(--txt-dim)}
   .ph-wgrade{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10px;color:var(--txt-dim)}
+  .ph-sh-btn{font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(120,200,255,.08);border:1px solid var(--cyan);border-radius:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;transition:background .12s,color .12s}
+  .ph-sh-btn:hover{background:rgba(120,200,255,.2);color:#fff}
   .ph-cost{font-family:var(--mono);font-size:11px;color:var(--txt-dim);margin:-2px 0 8px;line-height:1.5}
   .ph-cost b{color:var(--amber)} .ph-cost .cr{color:var(--cyan)}
   .ph-flag{background:rgba(255,168,40,.1);border:1px solid rgba(255,168,40,.4);border-radius:6px;padding:6px 9px;margin:-2px 0 9px;font-size:11px;line-height:1.45;color:#ffcf8a}
@@ -3321,17 +3325,26 @@ function renderSourceDrawer(type, lvl, preselect){
   document.getElementById('d-pos').textContent='';
   document.getElementById('d-prev').disabled=true; document.getElementById('d-next').disabled=true;
 
+  // Normalise preselect to a {key: rawValue|null} map so one code path handles a
+  // single-stat click (Overview / a Part Hunter stat range) and the multi-stat
+  // "Source Hunter" button (all of Part Hunter's targets at once).
+  let preMap=null, singlePct=null;
+  if(preselect){
+    if(preselect.vals) preMap=preselect.vals;
+    else if(preselect.key!=null){ preMap={}; preMap[preselect.key]=(preselect.value==null?null:preselect.value); singlePct=preselect.pct; }
+  }
   let body;
   if(!tgts.length){
     body='<p class="src-empty" style="margin-top:4px">No looted drop data for <b>'+escapeHtml(type)+'</b> at RE Level '+lvl+' — this pool is POV / craft-only. Pick another type or level above.</p>';
   } else {
-    let rows='';   // preselect (from a Stat Overview click) toggles just that stat on
+    let rows='';   // preselect toggles the given stat(s) on at their target value(s)
     tgts.forEach(t=>{
-      const on=preselect && preselect.key===t.key;
-      // Part Hunter passes a raw target value; derive the slider from it and keep
+      const on = !!(preMap && t.key in preMap);
+      // Part Hunter passes raw target value(s); derive the slider from each and keep
       // the typed value verbatim (data-preval) so it isn't rounded to a Bo% step.
-      const preVal = on && preselect.value!=null && !isNaN(preselect.value) ? Number(preselect.value) : null;
-      let pct = on ? (preVal!=null ? (rangePosition(t.eff,t.def.better,preVal)) : Number(preselect.pct)) : 85;
+      const raw = on ? preMap[t.key] : null;
+      const preVal = (raw!=null && !isNaN(raw)) ? Number(raw) : null;
+      let pct = on ? (preVal!=null ? rangePosition(t.eff,t.def.better,preVal) : Number(singlePct)) : 85;
       pct = Math.round(Math.max(0,Math.min(100, (pct==null||isNaN(pct))?85:pct)));
       const arrow=t.def.better==='high'?'<span style="color:var(--green)">↑</span>':'<span style="color:var(--amber)">↓</span>';
       rows+='<div class="src-tgt'+(on?'':' off')+'" data-key="'+t.key+'"'+(preVal!=null?' data-preval="1"':'')+'>'+
@@ -3682,7 +3695,8 @@ function phCardHtml(c, type){
   }
   return '<div class="ph-card'+(c.matched?'':' miss')+'">'+
     '<div class="ph-card-head"><span class="ph-src '+c.cls+'">'+c.source+'</span><span class="ph-lvl">'+c.label+'</span>'+
-      '<span class="ph-wgrade">GRADE '+wgChip+'</span></div>'+
+      '<span class="ph-wgrade">GRADE '+wgChip+'</span>'+
+      '<button type="button" class="ph-sh-btn" data-lvl="'+c.lvl+'" title="Open Source Hunter with all your target values at Lvl '+c.lvl+'">◎ Source Hunter</button></div>'+
     cost+flag+
     '<div class="ph-grid">'+cells+'</div>'+
   '</div>';
@@ -3785,8 +3799,11 @@ function renderPartHunter(){
   };
   body.addEventListener('input', onInput);
   body.addEventListener('change', e=>{ if(e.target.dataset.role==='tog') onInput(e); });
-  // click a result stat range → open Source Hunter beside this drawer
+  // click a result stat range → Source Hunter for that one stat; the card's
+  // "Source Hunter" button → Source Hunter with ALL targets filled in.
   document.getElementById('ph-results').addEventListener('click', e=>{
+    const btn=e.target.closest('.ph-sh-btn[data-lvl]');
+    if(btn){ openSourcesFromPartAll(type, btn.dataset.lvl); return; }
     const cell=e.target.closest('.ph-stat[data-key]'); if(!cell) return;
     openSourcesFromPart(type, cell.dataset.lvl, cell.dataset.key, parseFloat(cell.dataset.val));
   });
@@ -3798,6 +3815,14 @@ function openSourcesFromPart(type, lvl, key, val){
   const eff=effectiveDMRange(type, Number(lvl), key, {});
   const pct=eff!=null?rangePosition(eff, STAT_DEFS[key].better, val):null;
   openSourcesDrawer(type, lvl, key, pct==null?85:pct, isNaN(val)?null:val);
+}
+// Open Source Hunter beside Part Hunter with ALL of Part Hunter's targets filled
+// in at once (the card's "Source Hunter" button), aimed at that tier's level.
+function openSourcesFromPartAll(type, lvl){
+  const targets=phActiveTargets(type); if(!targets.length) return;
+  const vals={}; targets.forEach(t=>{ vals[t.key]=t.val; });
+  document.body.classList.add('ph-paired');
+  renderSourceDrawer(type, Number(lvl), {vals});
 }
 
 /* ---------- Brand detail drawer: stat ranges + top drop sources ---------- */
@@ -5541,6 +5566,7 @@ function setupCaLevelSlider(){
    best-of-each donor merge -> level bonus -> clamp, per RE-System-Spec.md
    ============================================================ */
 let reSelected = new Set(); // InstanceIds of chosen donor parts (current type only)
+let rePrimary = null;       // InstanceId of the primary donor — its Cert Level sets the finished part's Cert
 let reLocked = new Set();    // InstanceIds the suggester must keep (like a loadout slot lock)
 let reRejected = new Set();   // InstanceIds the suggester must never pick (inverse of lock)
 let rePriorities = {};       // per-type, session-scoped stat weight overrides (seeded from WEIGHTS)
@@ -5586,6 +5612,16 @@ function reOverallPct(type, id){
   return wt>0 ? ws/wt : 0;
 }
 
+// The finished part's Cert (equip) level = the PRIMARY donor's Cert Level. The RE
+// level only drives the stat bonus and the looted-donor back-inference; a finished
+// REed part's competitive tier is its equip level. An RE10 project off a primary
+// donor that's RE10/Cert5 yields a Cert5 part (a legit "monster" in that tier —
+// the trade-off is usually high mass/drain). No primary marked → default to the RE
+// level (the matched RE-N → Cert-N case).
+function reFinalCert(level){
+  if(rePrimary){ const p=DATA.find(r=>r.InstanceId===rePrimary); const c=p?parseInt(p.CertificationLevel,10):NaN; if(!isNaN(c)) return c; }
+  return level;
+}
 // bonus_percent = floor(level/2) + (chance10 ? 2 : 1)
 function reBonusPercent(level, chance10){ return Math.floor(level/2) + (chance10?2:1); }
 // Hard game caps that the RE bonus cannot exceed. Confirmed: Vs Armor/Shields ~0.710.
@@ -5652,6 +5688,7 @@ function renderReverse(){
   reRejected.forEach(id=>{ if(!eligIds.has(id)) reRejected.delete(id); });
   reLocked.forEach(id=>reSelected.add(id)); // a locked donor is always in the mix
   Object.keys(reSuggestTags).forEach(id=>{ if(!reSelected.has(id)) delete reSuggestTags[id]; });
+  if(rePrimary && !reSelected.has(rePrimary)) rePrimary=null; // primary must be a current donor
 
   const countEl = document.getElementById('re-donor-count');
   countEl.textContent = reSelected.size+' / '+level+' required'+(reLocked.size?(' · '+reLocked.size+' locked'):'')+(reRejected.size?(' · '+reRejected.size+' rejected'):'');
@@ -5666,13 +5703,21 @@ function renderReverse(){
       const checked = reSelected.has(r.InstanceId);
       const locked = reLocked.has(r.InstanceId);
       const rejected = reRejected.has(r.InstanceId);
+      const primary = rePrimary===r.InstanceId;
       const tag = reSuggestTags[r.InstanceId];
       const tagHtml = tag ? '<span class="rd-suggest-tag '+tag+'" title="'+(tag==='lead'?'Chosen as a stat leader':'Chosen as filler')+'">'+(tag==='lead'?'lead':'filler')+'</span>' : '';
-      return '<label class="re-donor-row'+(checked?' checked':'')+(locked?' re-locked':'')+(rejected?' re-rejected':'')+'">'+
+      // Once a part is a donor, offer to mark it Primary — its Cert Level becomes
+      // the finished part's Cert Level (only one primary at a time).
+      const certN = parseInt(r.CertificationLevel,10);
+      const primaryBtn = checked
+        ? '<button type="button" class="rd-primary'+(primary?' on':'')+'" data-primary="'+r.InstanceId+'" title="Set as the primary donor — its Cert Level'+(isNaN(certN)?'':' ('+certN+')')+' sets the finished part’s Cert Level">'+(primary?'★ Primary':'Primary')+(isNaN(certN)?'':' · Cert '+certN)+'</button>'
+        : '';
+      return '<label class="re-donor-row'+(checked?' checked':'')+(locked?' re-locked':'')+(rejected?' re-rejected':'')+(primary?' re-primary-row':'')+'">'+
         '<div class="rd-head"><input type="checkbox" data-id="'+r.InstanceId+'"'+(checked?' checked':'')+'>'+
         '<span class="rdn">'+escapeHtml(r.ComponentName||'(unnamed)')+(isKuat(r)?' <span class="rdl">Kuat</span>':'')+'</span>'+
         tagHtml+
         '<span class="rdl">RE'+escapeHtml(String(r.RELevel))+(shipClassOf(r)==='POV'?' · POV':'')+'</span>'+
+        primaryBtn+
         '<button type="button" class="rd-lock" data-lock="'+r.InstanceId+'" title="Lock this donor so Suggest keeps it">'+(locked?'🔒 Locked':'Lock')+'</button>'+
         '<button type="button" class="rd-reject" data-reject="'+r.InstanceId+'" title="Reject this donor so Suggest never picks it">'+(rejected?'🚫 Rejected':'Reject')+'</button></div>'+
         statChipsRow(type, r.RELevel, r)+
@@ -5690,12 +5735,15 @@ function renderREResult(type, level, chance10){
     return;
   }
   const projected = reProject(type, level, chance10, donors);
-  // An REed part's resulting Cert Level equals the level it was RE'd to, so
-  // the preview/commit rows carry BOTH level fields; Ship Class is inherited
-  // from the donor pool's selected class at level 9/10.
+  // The finished part's Cert (equip) level comes from the PRIMARY donor (or the RE
+  // level when none is marked). Grade the preview at that CERT tier: a finished
+  // REed part competes at its equip level, not the RE level — so both synth level
+  // fields = certLvl and it groups into the cert-tier finished pool regardless of
+  // the RE/Cert view toggle. Ship Class is inherited from the pool's class at 9/10.
   const shipClass = reCurrentShipClass();
+  const certLvl = reFinalCert(level);
   const synth = {InstanceId:'__re_preview__', RowType:'Part', ComponentType:type,
-    ComponentName:'RE Lab Preview ('+type+', RE'+level+')', RELevel:level, CertificationLevel:level,
+    ComponentName:'RE Lab Preview ('+type+', RE'+level+(certLvl!==level?' → Cert'+certLvl:'')+')', RELevel:certLvl, CertificationLevel:certLvl,
     ShipClass:shipClass, Source:'REed', Ownership:'Owned'};
   ALL_STAT_KEYS.forEach(k=>{ synth[k] = (k in projected) ? projected[k] : ''; });
 
@@ -5722,7 +5770,7 @@ function renderREResult(type, level, chance10){
       '<div class="box-label">PROJECTED WEIGHTED GRADE</div>'+
       '<span class="band '+gb.cls+'" style="font-size:13px;padding:5px 14px">'+gb.name+'</span>'+
       '<span style="font-family:var(--mono);color:#fff;font-size:13px;margin-left:8px">'+pct.toFixed(0)+'% Bo</span>'+
-      '<p style="margin:10px 0 0;font-size:11.5px;color:var(--txt-dim);line-height:1.5">Weighted mean Bo% vs '+s.groupN+' existing Crafted/REed '+escapeHtml(type)+'(s) at level '+level+'.</p>'+
+      '<p style="margin:10px 0 0;font-size:11.5px;color:var(--txt-dim);line-height:1.5">Weighted mean Bo% vs '+s.groupN+' existing Crafted/REed '+escapeHtml(type)+'(s) at <b>Cert level '+certLvl+'</b>'+(certLvl!==level?' — primary donor makes this an RE'+level+'-magnitude part in the Cert '+certLvl+' tier':'')+'.</p>'+
       '</div></div>';
   } else {
     html += '<div class="overall-box"><div><div class="box-label">PROJECTED WEIGHTED GRADE</div><div style="color:var(--txt-dim);font-size:12px">No numeric stats to score.</div></div></div>';
@@ -5750,8 +5798,10 @@ function renderREResult(type, level, chance10){
   if(swEl) swEl.addEventListener('change', e=>{ rePrefs.switchDonorsObserved=e.target.checked; saveREPrefs(); });
   document.getElementById('re-commit').addEventListener('click', ()=>{
     if(donors.length!==level){ toast('Need exactly '+level+' donor(s) for an RE'+level+' analysis'); return; }
-    const row = {RowType:'Part', ComponentType:type, ComponentName:'REed '+type+' (RE'+level+')',
-      RELevel:level, CertificationLevel:level, ShipClass:shipClass, Source:'REed', Ownership:'Owned', InstanceId:genInstanceId()};
+    // Keep the true RE level (for the stat bonus + looted back-inference); the
+    // Cert level comes from the primary donor and is the tier this part grades in.
+    const row = {RowType:'Part', ComponentType:type, ComponentName:'REed '+type+' (RE'+level+(certLvl!==level?' · Cert'+certLvl:'')+')',
+      RELevel:level, CertificationLevel:certLvl, ShipClass:shipClass, Source:'REed', Ownership:'Owned', InstanceId:genInstanceId()};
     ALL_STAT_KEYS.forEach(k=>{ row[k] = (k in projected) ? projected[k] : ''; });
     applyLevelDefaults(row);
     DATA.push(row);
@@ -5761,7 +5811,7 @@ function renderREResult(type, level, chance10){
     let switched=0;
     if(swEl && swEl.checked){ donors.forEach(d=>{ if(d.Ownership!=='Observed'){ d.Ownership='Observed'; switched++; } }); }
     // the RE is committed; clear the selection so the (now Observed) donors don't linger
-    reSelected.clear(); reLocked.clear(); reSuggestTags={};
+    reSelected.clear(); reLocked.clear(); reSuggestTags={}; rePrimary=null;
     recompute();
     toast('Added REed '+type+' (RE'+level+')'+(switched?(' · '+switched+' donor'+(switched>1?'s':'')+' → Observed'):'')+' to dataset');
   });
@@ -6014,6 +6064,14 @@ function initReverse(){
     renderReverse();
   });
   document.getElementById('re-donor-list').addEventListener('click', e=>{
+    const pm=e.target.closest('[data-primary]');
+    if(pm){
+      e.preventDefault(); e.stopPropagation();          // don't toggle the row checkbox
+      const id=pm.getAttribute('data-primary');
+      rePrimary = (rePrimary===id) ? null : id;          // single primary; click again to clear
+      renderReverse();
+      return;
+    }
     const lk=e.target.closest('[data-lock]');
     if(lk){
       e.preventDefault(); e.stopPropagation();          // don't toggle the row checkbox
