@@ -2362,14 +2362,26 @@ function parseTooltip(raw){
  // damage so the catalog stays clean (and so the name-based RE-level recovery in
  // applyLevelDefaults can match). Crafted/REed keep the Shipwright's own name.
  // The review modal still shows the result for the user to override.
- let nameOut=title, ocrOrig=null;
+ let nameOut=title, ocrOrig=null, genericName=false;
  if(source==='Looted' && title){
    const canon=canonicalLootedName(title, type, reLvl||certLvl);
    if(canon && canon!==title){ nameOut=canon; ocrOrig=title; }
  }
+ // No real name recovered (a name-less part, or only OCR junk that got rejected):
+ // give it a generic placeholder from the stat-detected type + level instead of
+ // leaving it blank in the list. Stats identify type/level reliably; the specific
+ // brand isn't stat-distinguishable within a level (many brands share one drop
+ // distribution), so a generic label is the honest best. User can still rename.
+ if(!nameOut && type){
+   const lv=parseInt(reLvl,10), clv=parseInt(certLvl,10);
+   const n=!isNaN(lv)?lv:(!isNaN(clv)?clv:null);
+   nameOut = (n!=null ? 'Level '+n+' ' : '') + type;
+   genericName = true;
+ }
  // Faithful "what OCR actually saw" — backward-compat defaults (copying a
  // lone level into the other field, ShipClass) are applied by the caller.
  const out=Object.assign({ComponentType:type,RELevel:reLvl,CertificationLevel:certLvl,ComponentName:nameOut,Source:source,Ownership:'Owned'},draft);
+ if(genericName) out._genericName=true;   // transient hint for the scan toast; not a saved field
  if(ocrOrig) out._ocrName=ocrOrig;   // transient hint for the scan toast; not a saved field
  return out;
 }
@@ -2414,6 +2426,7 @@ async function scanImageFile(file){
     const statCount=Object.keys(draft).filter(k=>STAT_DEFS[k]!==undefined).length;
     scanApply(draft);
     if(draft._ocrName) toast('Name corrected to “'+draft.ComponentName+'” — review and Save');
+    else if(draft._genericName) toast('No name on tooltip — filed as “'+draft.ComponentName+'” — review and Save');
     else if(statCount===0) toast('No stats recognized — try a sharper or more zoomed-in screenshot');
     else toast('Recognized '+statCount+' stat(s) — review and Save');
   }catch(err){
