@@ -2290,12 +2290,13 @@ function parseTooltip(raw){
  for(const l of nameRegion){
    if(!isName(l)) continue;
    const c=cleanName(l);
-   // A real name always has at least one 3+ letter word (a manufacturer or type
-   // token). Scattered background/HUD digits OCR'd above a name-less tooltip
-   // ("E23 EX 2 2X22 22 R12") have enough total letters to pass isName but no
-   // real word — reject them so a name-less part stays blank (graded by stats)
-   // rather than getting christened with junk.
-   if(!/[A-Za-z]{3,}/.test(c)) continue;
+   // A real name always has at least one 4+ letter word (a manufacturer or type
+   // token) — every datamined name's longest word is ≥5. Scattered background/HUD
+   // bleed OCR'd above a name-less tooltip ("…E23 EX 2 2X22 22 R12 LW ENS…") has
+   // enough total letters to pass isName, and stray 2-3 letter fragments ("ENS"),
+   // but no real word — reject it so a name-less part stays blank (graded by
+   // stats) rather than getting christened with junk.
+   if(!/[A-Za-z]{4,}/.test(c)) continue;
    const score=c.replace(/[^A-Za-z]/g,'').length;
    if(score>bestNameScore){ bestNameScore=score; title=c; }
  }
