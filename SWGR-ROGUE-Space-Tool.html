@@ -1790,7 +1790,7 @@ function renderTable(){
     // level. Elite-band coloured, tooltip lists the crossing stat(s).
     const hvKeys = highValueStats(r);
     let hvCell = `<span class="conf">—</span>`;
-    if(hvKeys.length){
+    if(isHighValue(r)){
       const labels = hvKeys.map(k=>STAT_DEFS[k].label).join(', ');
       hvCell = `<span class="gchip band-elite" title="Meets or beats Letts' high-value benchmark on: ${escapeHtml(labels)}">High Value</span>`;
     }
@@ -4077,7 +4077,22 @@ function highValueStats(r){
   });
   return out;
 }
-function isHighValue(r){ return highValueStats(r).length>0; }
+/* Pools that require ALL benchmarked stats to cross, not just any one. At L1 a
+   single Reactor/Armor stat clearing the (low) benchmark is too weak a signal —
+   both stats (Reactor: Mass + Gen; Armor: Armor + Mass) must be equal-or-better. */
+const HV_REQUIRE_ALL={'Main Reactor':{'1':true}, 'Armor':{'1':true}};
+function hvRequireAll(type, lvl){ const t=HV_REQUIRE_ALL[type]; return !!(t && t[String(lvl).trim()]); }
+function isHighValue(r){
+  const crossed=highValueStats(r);           // already Looted-only, [] otherwise
+  if(!crossed.length) return false;
+  const lvl=displayLevel(r);
+  if(hvRequireAll(r.ComponentType, lvl)){
+    // every benchmarked stat for this pool must be present AND crossing
+    const benched=statsForType(r.ComponentType).filter(k=>benchmarkLookup(r.ComponentType,lvl,k)!=null);
+    return benched.length>0 && benched.every(k=>crossed.includes(k));
+  }
+  return true;
+}
 /* ---------- Effective (live-stretching) range ----------
    One {min,max} range per peer pool: seeded from the datamined min/max (the
    starting point — datamined values are drop-sourced, so crafted/looted
