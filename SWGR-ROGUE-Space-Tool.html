@@ -1281,7 +1281,14 @@ function statsForType(t){
    names can collide freely and duplicate items stay distinct. */
 const ALL_STAT_KEYS = Object.keys(STAT_DEFS);
 // RowType distinguishes part rows ('Part') from saved ships ('Loadout', JSON in Payload).
-const CSV_COLUMNS = ['RowType','InstanceId','ComponentType','ComponentName','RELevel','CertificationLevel','ShipClass','Source','Ownership', ...ALL_STAT_KEYS, 'Payload'];
+// VariationOf: the part's canonical identity from the game's "Variation Of:" line
+// — for a Crafted part the schematic it was made from (regardless of what the
+// crafter renamed the display title to), for a REed part the primary donor. Kept
+// as its own column so source-listing / range lookup can key on the canonical
+// name instead of re-deriving identity from stats on every load. Deliberately
+// NOT part of partSignature (see _partSigParts) so backfilling it later can't
+// split observed duplicates.
+const CSV_COLUMNS = ['RowType','InstanceId','ComponentType','ComponentName','VariationOf','RELevel','CertificationLevel','ShipClass','Source','Ownership', ...ALL_STAT_KEYS, 'Payload'];
 
 /* RE Level vs Certification Level are two genuinely different numbers on the
    same part (e.g. Protecto-Net Shield: "Level 8 Ship Equipment" + "Reverse
@@ -1600,6 +1607,7 @@ function csvToComponents(text){
       InstanceId: get(arr,'InstanceId')||'',
       ComponentType: matchType,
       ComponentName: get(arr,'ComponentName')||'(unnamed)',
+      VariationOf: get(arr,'VariationOf')||'',
       RELevel: get(arr,'RELevel'),
       CertificationLevel: get(arr,'CertificationLevel'),
       ShipClass: get(arr,'ShipClass'),
@@ -2037,6 +2045,9 @@ function buildForm(type, data){
     <label class="field" id="customNameWrap" style="display:none">Custom Name
       <input type="text" id="fld-ComponentName" placeholder="e.g. Qualdex Reactor MK2" value="${data?escapeHtml(curName):''}">
     </label>
+    ${(curSrc==='Crafted'||curSrc==='REed')?`<label class="field">Variation Of <span style="color:var(--txt-dim);font-size:10px">(${isCrafted?'schematic it was crafted from':'primary RE donor'} — the canonical identity, not the crafter’s renamed title)</span>
+      <input type="text" id="fld-VariationOf" placeholder="${isCrafted?'e.g. MandalMotors High Output Engine Prototype IV':'e.g. SoroSuub ‘Flash’ Capacitor'}" value="${data?escapeHtml(String(v('VariationOf')||'')):''}">
+    </label>`:''}
     <label class="field">Source
       <select id="fld-Source">${SOURCE_OPTS.map(o=>`<option ${data&&data.Source===o?'selected':''}>${o}</option>`).join('')}</select>
     </label>
@@ -2122,7 +2133,7 @@ function applyStatFlags(data){
 }
 function collectForm(){
   const obj={};
-  ['ComponentType','ComponentName','RELevel','CertificationLevel','ShipClass','Source','Ownership'].forEach(k=>{
+  ['ComponentType','ComponentName','VariationOf','RELevel','CertificationLevel','ShipClass','Source','Ownership'].forEach(k=>{
     const el=document.getElementById('fld-'+k); if(el) obj[k]=el.value.trim();
   });
   ALL_STAT_KEYS.forEach(k=>{
@@ -2402,9 +2413,19 @@ function parseTooltip(raw){
  // Bazaar tooltips name the part on a mixed-case "Variation Of: <name>" line, which
  // cleanName (tuned for the ALL-CAPS in-game examine title) strips to nothing. When
  // the title came back blank, take the Variation-Of value verbatim (light cleanup).
- if(!title){ const vo=allLines.find(l=>/variation\s*of\s*:/i.test(l));
-   if(vo){ const nm=vo.replace(/.*?variation\s*of\s*:/i,'').replace(/[“”"'‘’|]/g,'').trim();
-     if(nm.replace(/[^A-Za-z]/g,'').length>=3) title=nm; } }
+ // "Variation Of:" is the part's canonical identity — the schematic a Crafted part
+ // was made from, or a REed part's primary donor — independent of whatever the
+ // crafter renamed the display title to. Capture it verbatim so it can be persisted
+ // (out.VariationOf) and used downstream to key ranges/sources by canonical name.
+ // (If OCR wrapped the VO onto a second line only the first is captured here — same
+ // limitation as the title, correctable in the editor.)
+ let variationOf='';
+ { const vo=allLines.find(l=>/variation\s*of\s*:/i.test(l));
+   if(vo) variationOf=vo.replace(/.*?variation\s*of\s*:/i,'').replace(/[“”"'‘’|]/g,'').trim(); }
+ // Bazaar tooltips name the part on a mixed-case "Variation Of: <name>" line, which
+ // cleanName (tuned for the ALL-CAPS in-game examine title) strips to nothing. When
+ // the title came back blank, fall back to the Variation-Of value.
+ if(!title && variationOf.replace(/[^A-Za-z]/g,'').length>=3) title=variationOf;
  // merge continuation lines: ":value" onto previous, and a bare-number line onto the label above it.
  // A long label ("Booster Energy Consumption Rate") pushes its value onto the next line; OCR often
  // drops the label's trailing colon too, so we merge when the line either ends with ":" OR is itself
@@ -2475,7 +2496,7 @@ function parseTooltip(raw){
  }
  // Faithful "what OCR actually saw" — backward-compat defaults (copying a
  // lone level into the other field, ShipClass) are applied by the caller.
- const out=Object.assign({ComponentType:type,RELevel:reLvl,CertificationLevel:certLvl,ComponentName:nameOut,Source:source,Ownership:'Owned'},draft);
+ const out=Object.assign({ComponentType:type,RELevel:reLvl,CertificationLevel:certLvl,ComponentName:nameOut,VariationOf:variationOf,Source:source,Ownership:'Owned'},draft);
  if(genericName) out._genericName=true;   // transient hint for the scan toast; not a saved field
  if(ocrOrig) out._ocrName=ocrOrig;   // transient hint for the scan toast; not a saved field
  return out;
@@ -2659,6 +2680,10 @@ function bulkToRow(it){
   const row={
     ComponentType: it.ComponentType||'',
     ComponentName: String(it.ComponentName||'').trim(),
+    // Carry the canonical identity parseTooltip captured — the bulk grid has no
+    // VariationOf input, but the parsed value must survive approval (editable
+    // afterwards via the row's edit modal).
+    VariationOf: String(it.VariationOf||'').trim(),
     RELevel: it.RELevel||'',
     CertificationLevel: it.CertificationLevel||'',
     ShipClass: it.ShipClass||'',
