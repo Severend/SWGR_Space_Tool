@@ -874,11 +874,13 @@
       <button class="chip" data-fsource="REed">REed</button>
       <button class="chip" data-fsource="Looted">Looted</button>
       <span class="fb-sep"></span>
+      <button class="chip" data-fhv="1" title="Show only Looted parts that meet or beat Letts' high-value benchmark on at least one stat for their level">High Value</button>
+      <span class="fb-sep"></span>
       <span class="fb-label">Level by</span>
       <button class="chip lv-chip" data-lview="re" title="Group &amp; grade Looted/REed parts by RE Level (Crafted always uses Cert Level)">RE</button>
       <button class="chip lv-chip" data-lview="cert" title="Group &amp; grade by Certification Level">Cert</button>
       <span class="fb-sep"></span>
-      <button class="chip" id="ca-combine" title="Merge cert-level skill boxes 1 · 2/3 · 4/5 · 6/7 · 8 · 9/10 into one pool each — never across Source or Ship Class">Combine paired levels</button>
+      <button class="chip" id="ca-combine" title="Merge cert-level skill boxes 1 · 2/3 · 4/5 · 6/7 · 8 · 9/10 into one pool each — never across Source or Ship Class">Paired Levels</button>
       <button class="btn ghost" id="btn-clear-filters" style="margin-left:auto">Reset filters</button>
     </div>
 
@@ -906,6 +908,7 @@
             <th data-sort="beststat">Best Stat <span class="arrow"></span></th>
             <th data-sort="overall">Weighted Grade <span class="arrow">▼</span></th>
             <th data-sort="token" title="Looted parts: how rare this good a roll is from Kash Nunes, and the expected tokens to buy one">Token Rarity <span class="arrow"></span></th>
+            <th data-sort="hv" title="Looted parts that meet or beat Letts' high-value benchmark (>1M credits) on at least one stat for their level">High Value <span class="arrow"></span></th>
             <th></th>
           </tr>
         </thead>
@@ -918,7 +921,7 @@
         <button class="btn primary" onclick="document.getElementById('btn-sync').click()"><span class="ico">⟳</span> Community Sync</button>
       </div>
     </div>
-    <p class="hint" style="margin-top:12px">Scores are computed <b>per component type, level and (at 9/10) Ship Class</b> — each part is ranked only against like-for-like parts. The <b>Level by</b> toggle picks whether Looted/REed parts group by RE Level or Certification Level (Crafted always uses Cert Level — it has no RE Level). Every part gets a <b>Best Stat</b> headline (its strongest weighted stat, graded <b>Bo%</b> — position between the worst and best of its pool's range) and a <b>Weighted Grade</b> (the weight-averaged Bo% across its stats). Looted parts stay in their own pool per level; Crafted and REed share one "final" pool per level. Thin pools make ranges less settled, so collect more parts at each level. The <b>Token Rarity</b> column (Looted parts) shows how rare this good a best-stat roll is from <b>Kash Nunes</b> (as a 1-in-x) and the expected tokens to buy one (roll cost 50 + 5×Cert). A <b>⚠ RE N?</b> flag on the level means the part's name or stats imply a different RE Level than recorded (an RE/Cert mismatch) — open the part to accept the correction.</p>
+    <p class="hint" style="margin-top:12px">Scores are computed <b>per component type, level and (at 9/10) Ship Class</b> — each part is ranked only against like-for-like parts. The <b>Level by</b> toggle picks whether Looted/REed parts group by RE Level or Certification Level (Crafted always uses Cert Level — it has no RE Level). Every part gets a <b>Best Stat</b> headline (its strongest weighted stat, graded <b>Bo%</b> — position between the worst and best of its pool's range) and a <b>Weighted Grade</b> (the weight-averaged Bo% across its stats). Looted parts stay in their own pool per level; Crafted and REed share one "final" pool per level. Thin pools make ranges less settled, so collect more parts at each level. The <b>Token Rarity</b> column (Looted parts) shows how rare this good a best-stat roll is from <b>Kash Nunes</b> (as a 1-in-x) and the expected tokens to buy one (roll cost 50 + 5×Cert). The <b>High Value</b> column tags a <b>Looted</b> part that meets or beats <b>Letts&rsquo;</b> high-value benchmark (a &gt;1M-credit roll) on any stat for its level. A <b>⚠ RE N?</b> flag on the level means the part's name or stats imply a different RE Level than recorded (an RE/Cert mismatch) — open the part to accept the correction.</p>
   </section>
 
   <!-- ============ STAT OVERVIEW ============ -->
@@ -940,7 +943,7 @@
       <button class="chip lv-chip" data-lview="re" title="Column levels from RE Level (Crafted rows always counted under their Cert Level)">RE</button>
       <button class="chip lv-chip" data-lview="cert" title="Column levels from Certification Level">Cert</button>
       <span class="fb-sep"></span>
-      <button class="chip" id="ov-combine" title="Merge cert-level skill-box columns 1 · 2/3 · 4/5 · 6/7 · 8 · 9/10">Combine paired levels</button>
+      <button class="chip" id="ov-combine" title="Merge cert-level skill-box columns 1 · 2/3 · 4/5 · 6/7 · 8 · 9/10">Paired Levels</button>
       <span class="fb-sep"></span>
       <span class="fb-label">Range</span>
       <button class="chip ov-range-chip" data-ovrange="finished" title="CRAFTED / REed — the two finished production paths, stacked so you can compare them: Crafted (the crafted default seed from 161 bazaar samples + your CSV, stretched by observed Crafted parts) vs REed (the Looted range projected through the level's max RE bonus, stretched by observed REed parts).">Crafted / REed</button>
@@ -1660,6 +1663,7 @@ let sortKey='overall', sortDir=-1;
 let tokenAccurate=true;   // Token Rarity column always shown (Gaussian model validated vs Seraph)
 let filterTypes=new Set();   // empty = all types (Component Analysis TYPE multi-select)
 let filterOwned=false;
+let filterHV=false;
 let filterSources=new Set();
 let applyRounding=false;
 let ovMinLevel=6, ovMaxLevel=10;
@@ -1708,6 +1712,7 @@ function getSortVal(s,key){
       return (s.gradePct===null || s.gradePct===undefined) ? -1 : s.gradePct;
     case 'beststat': return (s.bestStat && s.bestStat.rangePct!=null) ? s.bestStat.rangePct : -1;
     case 'token': { const t=tokenRarity(s); if(!t) return -1; if(t.reward) return Number.MAX_VALUE; return isFinite(t.tokens)?t.tokens:Number.MAX_VALUE; }
+    case 'hv': return isHighValue(s.row) ? 1 : 0;
   }
   return 0;
 }
@@ -1720,6 +1725,7 @@ function renderTable(){
   if(filterTypes.size) list = list.filter(o=>filterTypes.has(o.s.row.ComponentType));
   if(filterOwned) list = list.filter(o=>o.s.row.Ownership==='Owned');
   if(filterSources.size) list = list.filter(o=>filterSources.has(o.s.row.Source));
+  if(filterHV) list = list.filter(o=>isHighValue(o.s.row));
   if(caMinLevel>1 || caMaxLevel<10){
     const lo=Math.min(caMinLevel,caMaxLevel), hi=Math.max(caMinLevel,caMaxLevel);
     list = list.filter(o=>{ const L=parseInt(displayLevel(o.s.row),10); return isNaN(L) ? true : (L>=lo && L<=hi); });
@@ -1780,6 +1786,14 @@ function renderTable(){
     } else if(tr){
       tokenCell = `<div class="tok-wrap"><span class="tok-rarity" title="Best stat ${escapeHtml(tr.statLabel)} beats ${tr.pct.toFixed(1)}% of Kash Nunes RE ${tr.level} rolls (${tr.poolN}-brand pool, even odds)">${rarityLabel(tr.rarity)}</span><span class="tok-cost" title="Expected tokens to roll one this good at Kash Nunes — ${tokenNumFmt(tr.cost)}/roll × ${rarityLabel(tr.rarity).replace('1-in-','')} rolls">(${tokenNumFmt(tr.tokens)} tokens)</span></div>`;
     }
+    // High Value (Looted only): meets/beats Letts' benchmark on any stat for its
+    // level. Elite-band coloured, tooltip lists the crossing stat(s).
+    const hvKeys = highValueStats(r);
+    let hvCell = `<span class="conf">—</span>`;
+    if(hvKeys.length){
+      const labels = hvKeys.map(k=>STAT_DEFS[k].label).join(', ');
+      hvCell = `<span class="gchip band-elite" title="Meets or beats Letts' high-value benchmark on: ${escapeHtml(labels)}">High Value</span>`;
+    }
     return `<tr data-i="${o.i}" class="${o.i===selectedIndex?'sel':''}">
       <td class="check-cell"><input type="checkbox" class="row-check" data-id="${escapeHtml(r.InstanceId||'')}"${checked}></td>
       <td class="name-cell">${escapeHtml(r.ComponentName)}</td>
@@ -1790,6 +1804,7 @@ function renderTable(){
       <td class="dm-cell"><div class="bs-wrap">${bestCell}</div></td>
       <td>${wgCell}</td>
       <td class="tok-cell">${tokenCell}</td>
+      <td class="hv-cell">${hvCell}</td>
       <td><div class="row-actions">
         <button class="icon-btn act-edit" title="Edit">✎</button>
         <button class="icon-btn act-del" title="Delete">🗑</button>
@@ -3975,6 +3990,94 @@ function mergedDMAnchors(type, pair, key){
   if(!a&&!b) return null; if(!a) return b; if(!b) return a;
   return {min:Math.min(a.min,b.min), max:Math.max(a.max,b.max)};
 }
+/* ---------- High-value benchmark table (Letts) ----------
+   Per component type / level / stat: the single stat value at which a LOOTED
+   roll of that part is genuinely high-value (>1M credits) on the server —
+   Letts' "What is actually valuable" sheet. These are LOOTED best values keyed
+   by level; direction comes from STAT_DEFS (high-better = a floor to beat,
+   low-better = a ceiling to stay under). Blanks on the sheet (XXX), Booster (no
+   benchmarks) and Droid Interface (not on the sheet) are simply absent. Two uses:
+     1) folded into the Looted effective range as a best-endpoint floor (see
+        effectiveDMRange) — if our observed/datamined best is worse than Letts'
+        value, it becomes the new best; finalDmLookup then projects that up the
+        RE ladder, pushing the REed range out to match automatically;
+     2) the Component Analysis "High Value" tag/filter (Looted parts only). */
+const VALUE_BENCHMARKS={
+  'Main Reactor':{
+    '1':{Mass:1000,ReactorGenerationRate:11500},
+    '2':{Mass:1200,ReactorGenerationRate:13500},
+    '3':{Mass:2000,ReactorGenerationRate:14700},
+    '4':{Mass:3000,ReactorGenerationRate:17000},
+    '5':{Mass:4300,ReactorGenerationRate:20000},
+    '6':{Mass:7500,ReactorGenerationRate:26000},
+    '7':{Mass:11000,ReactorGenerationRate:31000},
+    '8':{Mass:17000,ReactorGenerationRate:38000},
+  },
+  'Engine':{
+    '4':{ReactorEnergyDrain:1200,Mass:3000,PitchRateMax:67.3,YawRateMax:67.3,RollRateMax:67.3,EngineTopSpeed:72.1},
+    '6':{ReactorEnergyDrain:1300,Mass:8500,PitchRateMax:71,YawRateMax:71,RollRateMax:71,EngineTopSpeed:95},
+    '8':{ReactorEnergyDrain:1350,Mass:22000,PitchRateMax:73.6,YawRateMax:73.6,RollRateMax:73.6,EngineTopSpeed:103.8},
+    '10':{ReactorEnergyDrain:1300,Mass:39500,PitchRateMax:80.4,YawRateMax:80.4,RollRateMax:80.4,EngineTopSpeed:106.5},
+  },
+  'Shield':{
+    '5':{ReactorEnergyDrain:1400,Mass:5300,FrontShieldHP:1300,BackShieldHP:1300,ShieldRechargeRate:9},
+    '6':{ReactorEnergyDrain:1500,Mass:9500,FrontShieldHP:1700,BackShieldHP:1700,ShieldRechargeRate:11.5},
+    '7':{ReactorEnergyDrain:1500,Mass:14000,FrontShieldHP:2200,BackShieldHP:2200,ShieldRechargeRate:16},
+    '8':{ReactorEnergyDrain:1600,Mass:25000,FrontShieldHP:2435,BackShieldHP:2435,ShieldRechargeRate:17},
+    '10':{ReactorEnergyDrain:1650,Mass:43000,FrontShieldHP:3100,BackShieldHP:3100,ShieldRechargeRate:19},
+  },
+  'Armor':{
+    '1':{Armor:250,Mass:600},
+    '2':{Armor:325,Mass:850},
+    '3':{Armor:600,Mass:1000},
+    '4':{Armor:750,Mass:1800},
+    '5':{Armor:1100,Mass:2200},
+    '6':{Armor:1400,Mass:3700},
+    '7':{Armor:1600,Mass:4500},
+    '8':{Armor:2000,Mass:6500},
+    '9':{Armor:2400,Mass:7500},
+    '10':{Armor:2800,Mass:10000},
+  },
+  'Capacitor':{
+    '2':{CapacitorEnergy:1150,CapacitorRechargeRate:40.5},
+    '4':{ReactorEnergyDrain:575,Mass:2800,CapacitorEnergy:1250,CapacitorRechargeRate:45},
+    '6':{ReactorEnergyDrain:600,Mass:7000,CapacitorEnergy:1425,CapacitorRechargeRate:50},
+    '8':{ReactorEnergyDrain:700,Mass:23000,CapacitorEnergy:1450,CapacitorRechargeRate:55},
+    '10':{ReactorEnergyDrain:675,Mass:36000,CapacitorEnergy:1650,CapacitorRechargeRate:60},
+  },
+  'Weapon':{
+    '5':{ReactorEnergyDrain:1500,Mass:4800,DamageMin:1300,DamageMax:1925,VsShields:0.683,VsArmor:0.683,EnergyPerShot:18,RefireRate:0.31},
+    '6':{ReactorEnergyDrain:1550,Mass:8500,DamageMin:1925,DamageMax:2860,VsShields:0.672,VsArmor:0.672,EnergyPerShot:22,RefireRate:0.38},
+    '7':{ReactorEnergyDrain:1650,Mass:12700,DamageMin:2100,DamageMax:3100,VsShields:0.634,VsArmor:0.634,EnergyPerShot:20,RefireRate:0.31},
+    // Energy/Shot L8 reads "Borstel" on the sheet (a brand ref, not a number) — omitted.
+    '8':{ReactorEnergyDrain:1700,Mass:23500,DamageMin:2400,DamageMax:3725,VsShields:0.666,VsArmor:0.666,RefireRate:0.388},
+    '10':{ReactorEnergyDrain:1700,Mass:40000,DamageMin:3000,DamageMax:5000,VsShields:0.80,VsArmor:0.80,EnergyPerShot:27.5,RefireRate:0.38},
+  },
+};
+function benchmarkLookup(type, lvl, key){
+  const t=VALUE_BENCHMARKS[type]; if(!t) return null;
+  const L=t[String(lvl).trim()]; if(!L) return null;
+  const v=L[key]; return (v==null||isNaN(v)) ? null : v;
+}
+/* A Looted part is "high value" when any stat meets/beats Letts' benchmark for
+   its displayed level (high-better ≥, low-better ≤). Returns the crossing stat
+   keys (empty = not high value). Looted only — Crafted/REed are production
+   end-states, not raw drops, so the drop-value benchmark doesn't apply. */
+function highValueStats(r){
+  if(r.Source!=='Looted') return [];
+  const lvl=displayLevel(r);
+  const out=[];
+  statsForType(r.ComponentType).forEach(key=>{
+    const bench=benchmarkLookup(r.ComponentType, lvl, key);
+    if(bench==null) return;
+    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
+    const n=Number(v);
+    const low=STAT_DEFS[key] && STAT_DEFS[key].better==='low';
+    if(low ? n<=bench : n>=bench) out.push(key);
+  });
+  return out;
+}
+function isHighValue(r){ return highValueStats(r).length>0; }
 /* ---------- Effective (live-stretching) range ----------
    One {min,max} range per peer pool: seeded from the datamined min/max (the
    starting point — datamined values are drop-sourced, so crafted/looted
@@ -4014,6 +4117,17 @@ function effectiveDMRange(type, lvl, key, opts){
   let lo=Infinity, hi=-Infinity;
   const fold=v=>{ if(v!=null && !isNaN(v)){ if(v<lo)lo=v; if(v>hi)hi=v; } };
   if(seed && seed.min!=null && seed.max!=null){ fold(seed.min); fold(seed.max); }
+  // Letts' high-value benchmark: a reliable best-endpoint floor. Fold it toward
+  // the BEST endpoint ONLY — raise max for high-better, lower min for low-better
+  // — so it becomes the new best when our seed/observed data is worse, but never
+  // drags the WORST endpoint around. Only meaningful once a seed/observed value
+  // has set the other endpoint (a range needs both), which the datamined seed
+  // above almost always supplies. finalDmLookup then projects it up the RE ladder.
+  lvls.forEach(l=>{
+    const bench=benchmarkLookup(type, l, key);
+    if(bench==null) return;
+    if(dir>0){ if(bench>hi) hi=bench; } else { if(bench<lo) lo=bench; }
+  });
   DATA.forEach(r=>{
     if(r.ComponentType!==type) return;
     if(shipClassOf(r)!==shipClass) return;
@@ -4368,7 +4482,7 @@ function renderGuide(){
     <p><b>Looted and Finished use separate — but related — ranges.</b> A <b>Looted</b> part is raw loot: its range is the datamined seed, stretched by your observed looted rolls. A <b>Finished</b> part (Crafted or REed) is graded against that looted range <i>projected up through the level's maximum RE bonus</i> (7% at level 10) — its own, higher ceiling. Grading them separately is what keeps a top looted LVL 10 roll able to reach <b>Elite</b>: if it were measured against the bonus-inflated finished ceiling, the RE headroom would drag every un-RE'd part down. The two ranges still inform each other: a good <b>Looted</b> drop raises what a Finished part could become (it lifts the projected finished ceiling), and a strong <b>REed</b> stat reveals a real donor value — REed ÷ (1 + bonus) — that stretches the <b>Looted</b> range in turn. A <b>Crafted</b> part is built from materials, not RE'd from a drop, so it stretches only its own finished range and never the looted one. A freak Crafted or REed roll past the projected finished ceiling stretches the finished range, just like a good drop stretches the looted one.</p>
     <p><b>Fighter vs POV</b>: at level 9/10, POV (multiplayer-ship) components form fully separate pools with <b>no datamined seed at all</b> — no datamined POV data exists from any source, and its stat distributions (mass especially) are systematically different — so POV ranges build purely from your own observed POV parts (and skip the cross-source inference above).</p>
 
-    <h2>Combine Paired Levels</h2>
+    <h2>Paired Levels</h2>
     <p>An optional per-tab toggle that merges levels by certification skill box — 1 · 2/3 · 4/5 · 6/7 · 8 · 9/10 — into one pool each: the range endpoints are unioned. Levels 1 and 8 are their own cert boxes, so they never merge. Useful while your per-level pools are thin. Pools never merge across Source or Ship Class — Looted-Fighter-9/10 and Crafted-9/10 stay separate even when both are paired.</p>
 
     <h2>Stat weighting</h2>
@@ -4400,8 +4514,9 @@ function renderGuide(){
     <table class="mini">
       <tr><th>Source</th><th>Author / credit</th><th>Used for</th></tr>
       <tr><td><b>Seraph&rsquo;s Loadout Tool</b> &mdash; game data export (<span style="font-family:var(--mono)">data.json</span>)</td><td>Compiled by <b>Seraph</b>.</td><td>The <b>starting stat ranges</b> (the datamined min/max each pool&rsquo;s effective range grows from), the named-part catalog/dropdowns, drop weights, and the <b>loot tables</b> (enemy &rarr; loot group &rarr; table &rarr; part) behind the drop sources.</td></tr>
+      <tr><td><b>High Value Stats Table</b> &mdash; benchmark stat values for &gt;1M-credit parts, per type &amp; level</td><td>Compiled by <b>Letts</b>.</td><td>The <b>High Value</b> tag &amp; filter (a Looted part meeting or beating the benchmark on any stat for its level), and a reliable best-endpoint floor folded into each Looted pool&rsquo;s effective range (which in turn lifts the projected REed range).</td></tr>
     </table>
-    <p class="hint">Each part&rsquo;s stat range is its mean &plusmn; the in-game roll spread (<span style="font-family:var(--mono)">statmod</span>). Drop chance is the full chain: enemy droprate &times; drop count &times; the part&rsquo;s weight share within its loot table. With thanks to Seraph and the SWG Restoration pilot community.</p>
+    <p class="hint">Each part&rsquo;s stat range is its mean &plusmn; the in-game roll spread (<span style="font-family:var(--mono)">statmod</span>). Drop chance is the full chain: enemy droprate &times; drop count &times; the part&rsquo;s weight share within its loot table. With thanks to Seraph, Letts, and the SWG Restoration pilot community.</p>
   `;
   const rt=document.getElementById('round-toggle');
   rt.checked=applyRounding;
@@ -5332,6 +5447,9 @@ function buildTypeFilter(){
 document.querySelectorAll('.chip[data-fowned]').forEach(c=>c.addEventListener('click',()=>{
   filterOwned=!filterOwned; c.classList.toggle('active',filterOwned); renderTable();
 }));
+document.querySelectorAll('.chip[data-fhv]').forEach(c=>c.addEventListener('click',()=>{
+  filterHV=!filterHV; c.classList.toggle('active',filterHV); renderTable();
+}));
 document.querySelectorAll('.chip[data-fsource]').forEach(c=>c.addEventListener('click',()=>{
   const src=c.dataset.fsource;
   if(filterSources.has(src)) filterSources.delete(src); else filterSources.add(src);
@@ -5370,7 +5488,7 @@ document.querySelectorAll('.ov-range-chip').forEach(c=>c.addEventListener('click
 }));
 syncLevelControls();
 document.getElementById('btn-clear-filters').addEventListener('click',()=>{
-  filterTypes.clear(); filterOwned=false; filterSources.clear();
+  filterTypes.clear(); filterOwned=false; filterHV=false; filterSources.clear();
   document.querySelectorAll('.type-ms-cb').forEach(cb=>cb.checked=false);
   updateTypeFilterLabel();
   caMinLevel=1; caMaxLevel=10; syncCaLevelSlider();
