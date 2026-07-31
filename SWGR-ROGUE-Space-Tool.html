@@ -2445,10 +2445,17 @@ function parseTooltip(raw){
  // A long label ("Booster Energy Consumption Rate") pushes its value onto the next line; OCR often
  // drops the label's trailing colon too, so we merge when the line either ends with ":" OR is itself
  // a recognized stat label carrying no value of its own (isBareLabel) — never a name/title line.
+ // The 3D model preview bleeds stray glyphs onto these wrapped-label lines ("Front Shield
+ // Hitpoints: SL p") — normalize only the text UP TO the colon (if any) so that junk can't
+ // pollute the label match; a colon with a digit already after it means the value is right
+ // there, not on the next line, so that's never a bare label.
  const isBareLabel=l=>{
-   if(/\d/.test(l)) return false;                            // a label line has no value of its own
-   if(!/[A-Za-z¥]/.test(l)) return false;
-   const n=OCR_NORM(String(l).replace(/¥/g,'V').replace(/:\s*$/,''));
+   const ci=l.indexOf(':');
+   const labelPart=ci>=0?l.slice(0,ci):l, valuePart=ci>=0?l.slice(ci+1):'';
+   if(/\d/.test(valuePart)) return false;                     // already has its value on this line
+   if(ci<0 && /\d/.test(l)) return false;                     // no colon and a digit -> not a bare label
+   if(!/[A-Za-z¥]/.test(labelPart)) return false;
+   const n=OCR_NORM(String(labelPart).replace(/¥/g,'V'));
    return !!(n && (OCR_LABELS[n] || n.includes('consumption') || (n.startsWith('vs')&&n.length>2)));
  };
  const merged=[];
