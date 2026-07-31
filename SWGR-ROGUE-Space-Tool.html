@@ -2505,6 +2505,13 @@ function parseTooltip(raw){
    const canon=canonicalLootedName(title, type, reLvl||certLvl);
    if(canon && canon!==title){ nameOut=canon; ocrOrig=title; }
  }
+ // A Crafted part's VariationOf is the schematic name, recoverable the same way —
+ // REed isn't attempted here since its VO is a Looted donor's name, a different
+ // pool (BRANDS, not CRAFTED_VO), not yet wired up.
+ if(source==='Crafted' && variationOf){
+   const canonVO=canonicalCraftedVO(variationOf, type, certLvl);
+   if(canonVO && canonVO!==variationOf) variationOf=canonVO;
+ }
  // No real name recovered (a name-less part, or only OCR junk that got rejected):
  // give it a generic placeholder from the stat-detected type + level instead of
  // leaving it blank in the list. Stats identify type/level reliably; the specific
@@ -2862,19 +2869,24 @@ function mergeSharedComponents(parsed){
   const byId = new Map();   // name-independent signature -> existing row (prefer an Observed target)
   DATA.forEach(r=>{ const k=partSigNoName(r); const ex=byId.get(k);
     if(!ex || (ex.Ownership!=='Observed' && r.Ownership==='Observed')) byId.set(k,r); });
-  const fresh = []; let dupes = 0, renamed = 0;
+  const fresh = []; let dupes = 0, renamed = 0, filledVO = 0;
   parsed.forEach(p=>{
     const k=partSigNoName(p); const hit=byId.get(k);
     if(hit){                                        // same observed part already present
       if(hit.Ownership==='Observed' && hit.ComponentName!==p.ComponentName){
         hit.ComponentName=p.ComponentName; renamed++; // adopt the cleaner name in place
       } else dupes++;
+      // Adopt VariationOf too — a stats-matching dupe is the SAME part, so if the
+      // incoming copy carries identity data ours lacks (e.g. it was scanned after
+      // the VariationOf field shipped, or backfilled community-side), pick it up
+      // rather than silently re-exporting our blank forever.
+      if(!hit.VariationOf && p.VariationOf){ hit.VariationOf=p.VariationOf; filledVO++; }
       return;                                       // never add a duplicate
     }
     byId.set(k,p); fresh.push(p);                   // new part (also dedups within this batch)
   });
   DATA = DATA.concat(fresh);
-  return { added: fresh.length, dupes, renamed };
+  return { added: fresh.length, dupes, renamed, filledVO };
 }
 
 async function communitySync(){
@@ -2889,10 +2901,11 @@ async function communitySync(){
     try{ parsed=csvToComponents(text); }
     catch(err){ toast('Community sync parse error: '+err.message); return; }
     if(!parsed.length){ toast('Community file had no components'); return; }
-    const {added,dupes,renamed}=mergeSharedComponents(parsed);
+    const {added,dupes,renamed,filledVO}=mergeSharedComponents(parsed);
     recompute();
     toast(`Community sync: added ${added} new`
       +(renamed?` · corrected ${renamed} name${renamed>1?'s':''}`:'')
+      +(filledVO?` · filled in ${filledVO} Variation Of`:'')
       +(dupes?` · skipped ${dupes} already had`:''));
   }catch(err){
     toast('Community sync failed: '+((err&&err.message)||err)+' — check your connection');
@@ -3034,6 +3047,37 @@ function canonicalLootedName(title, type, lvl){
     if(best && bestD<second) return best;                     // clear unique winner
   }
   return null;                                                // ambiguous / unrecoverable → keep OCR
+}
+// Canonical CRAFTED schematic names per component type + Cert Level, keyed by
+// TYPELETTER like BRANDS. Built from confirmed crafted parts (swgr-crafted-parts.csv,
+// hand-verified) — usually 1-4 named schematics per type+level (the baseline "Mark N
+// …" line plus, for some types, a rarer named line: Deepwell/MandalMotors/Koensayr/
+// Kuat Drive Yard). Weapon additionally splits by color/subtype at each level.
+const CRAFTED_VO={"S":{"1":["Mark I Shield Generator"],"3":["Mark II Deflector Shield Generator"],"5":["Mark III Deflector Shield Generator"],"7":["Mark IV Deflector Shield Generator"],"9":["Mark V Deflector Shield Generator"]},"E":{"1":["MandalMotors High Output Engine Prototype I","Mark I Starfighter Engine"],"3":["MandalMotors High Output Engine Prototype II","Mark II Starfighter Engine"],"5":["MandalMotors High Output Engine Prototype III","Mark III Starfighter Engine"],"7":["MandalMotors High Output Engine Prototype IV","Mark IV Starfighter Engine"],"9":["MandalMotors High Output Engine Prototype V","Mark V Starfighter Engine"]},"R":{"9":["Koensayr Reactor \"Star Synthesis\" Archetype E","Mark V Fusion Reactor"],"7":["Koensayr Reactor \"Star Synthesis\" Archetype D","Mark IV Fusion Reactor"],"1":["Koensayr Reactor \"Star Synthesis\" Archetype A","Mark I Fusion Reactor"],"3":["Mark II Fusion Reactor"],"5":["Mark III Fusion Reactor"]},"C":{"1":["Deepwell Capacitor Prototype Alpha","Mark I Weapons Capacitor"],"3":["Deepwell Capacitor Prototype Beta","Mark II Weapons Capacitor"],"7":["Deepwell Capacitor Prototype Delta","Mark IV Weapons Capacitor"],"9":["Deepwell Capacitor Prototype Epsilon","Mark V Weapons Capacitor"],"5":["Deepwell Capacitor Prototype Gamma","Mark III Weapons Capacitor"]},"B":{"1":["Kuat Drive Yard Experimental Booster BR-1x","Mark I Booster"],"3":["Kuat Drive Yard Experimental Booster BR-2x","Mark II Booster"],"5":["Kuat Drive Yard Experimental Booster BR-3x","Mark III Booster"],"7":["Kuat Drive Yard Experimental Booster BR-4x","Mark IV Booster"],"9":["Kuat Drive Yard Experimental Booster BR-5x","Mark V Booster"]},"W":{"1":["Light Blaster (Green)","Light Blaster (Red)","Light Disruptor","Light Ion Cannon"],"3":["Mid-Grade Blaster (Green)","Mid-Grade Blaster (Red)","Mid-Grade Disruptor","Mid-Grade Ion Cannon"],"5":["Heavy Blaster (Green)","Heavy Blaster (Red)","Heavy Disruptor","Heavy Ion Cannon"],"7":["Advanced Blaster (Green)","Advanced Blaster (Red)","Advanced Disruptor","Advanced Ion Cannon"],"8":["Experimental Borstel Blaster"],"9":["Experimental Blaster (Green)","Experimental Blaster (Red)","Experimental Disruptor","Experimental Ion Cannon"]}};
+// Recover a CRAFTED part's canonical VariationOf (the schematic name) from OCR
+// damage. Unlike a Looted name, the captured text is often only a FRAGMENT — the
+// "Variation Of:" line wraps and only the first line is captured (known parser
+// limit), or the 3D-preview bleeds junk into the tail — so this is an OVERLAP
+// (prefix) match rather than a whole-string one: compare only the first
+// min(len(ocr),len(candidate)) characters of each, so a short/truncated capture
+// still lines up against a longer canonical name. Pool = CRAFTED_VO[type][CertLevel]
+// (usually 1-4 names), so a real signal ("Kuat Drive Yard", "Deepwell") is enough
+// to land a clear unique winner even from a short fragment; require a clean
+// unique winner or keep the OCR text — never guess between close candidates.
+function canonicalCraftedVO(raw, type, certLvl){
+  const L=letterOf(type); if(!L||!CRAFTED_VO[L]) return null;
+  const pool=CRAFTED_VO[L][String(certLvl)]; if(!pool||!pool.length) return null;
+  const q=canonFold(raw); if(q.length<5) return null;
+  let best=null, bestScore=Infinity, second=Infinity;
+  for(const cand of pool){
+    const c=canonFold(cand);
+    const overlap=Math.min(q.length, c.length); if(overlap<5) continue;
+    const cap=Math.max(2, Math.floor(overlap*0.25));
+    const d=ocrEditDist(q.slice(0,overlap), c.slice(0,overlap), cap); if(d>cap) continue;
+    const score=d/overlap;
+    if(score<bestScore){ second=bestScore; bestScore=score; best=cand; } else if(score<second){ second=score; }
+  }
+  return (best && bestScore<second) ? best : null;
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
