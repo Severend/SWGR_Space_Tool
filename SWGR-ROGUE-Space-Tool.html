@@ -2514,7 +2514,11 @@ function parseTooltip(raw){
  } else if(source==='Crafted' && !variationOf){
    const only=craftedVOSingleCandidate(type, certLvl);
    if(only) variationOf=only;
-   else { const byArmor=craftedVOByArmor(type, certLvl, draft.Armor); if(byArmor) variationOf=byArmor; }
+   else {
+     const byArmor=craftedVOByArmor(type, certLvl, draft.Armor);
+     if(byArmor) variationOf=byArmor;
+     else { const byDmg=craftedVOByDamageType(type, certLvl, draft.VsShields, draft.VsArmor); if(byDmg) variationOf=byDmg; }
+   }
  }
  // No real name recovered (a name-less part, or only OCR junk that got rejected):
  // give it a generic placeholder from the stat-detected type + level instead of
@@ -3121,6 +3125,24 @@ function craftedVOByArmor(type, certLvl, armor){
   const rng=craftedDefLookup(type, certLvl, 'Armor'); if(!rng || !rng.min) return null;
   const threshold=(rng.max/rng.min>=1.3) ? Math.sqrt(rng.min*rng.max) : rng.max*0.75;
   return armor<threshold ? pool[0] : pool[1];
+}
+// A crafted Weapon's SUBTYPE is determined by its damage profile, not Armor — a
+// Blaster is balanced (Vs Shields == Vs Armor), a Disruptor favors Vs Armor, an Ion
+// Cannon favors Vs Shields (per the shipwright wiki: "Disruptors are most effective
+// against armor… Ion Cannons are most effective against shields"). Verified against
+// all 59 known Weapon crafted samples (59/59). Blaster's Green/Red split is COSMETIC
+// ONLY — confirmed byte-identical Vs Shields/Vs Armor across every sample — so it's
+// unrecoverable from stats and deliberately left unresolved (gap≈0) rather than
+// guessed; Disruptor and Ion Cannon have no such split (exactly one candidate each per
+// tier), so those two resolve fully.
+function craftedVOByDamageType(type, certLvl, vsShields, vsArmor){
+  if(type!=='Weapon' || !vsShields || !vsArmor || isNaN(vsShields) || isNaN(vsArmor)) return null;
+  const pool=(CRAFTED_VO['W']||{})[String(certLvl)]; if(!pool) return null;
+  const gap=Number(vsShields)-Number(vsArmor);
+  if(Math.abs(gap)<0.05) return null;                     // Blaster — Green/Red unrecoverable
+  const want=gap>0 ? 'ion cannon' : 'disruptor';
+  const hits=pool.filter(n=>n.toLowerCase().includes(want));
+  return hits.length===1 ? hits[0] : null;
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
