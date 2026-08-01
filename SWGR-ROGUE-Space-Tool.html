@@ -2514,6 +2514,7 @@ function parseTooltip(raw){
  } else if(source==='Crafted' && !variationOf){
    const only=craftedVOSingleCandidate(type, certLvl);
    if(only) variationOf=only;
+   else { const byArmor=craftedVOByArmor(type, certLvl, draft.Armor); if(byArmor) variationOf=byArmor; }
  }
  // No real name recovered (a name-less part, or only OCR junk that got rejected):
  // give it a generic placeholder from the stat-detected type + level instead of
@@ -3097,6 +3098,29 @@ function craftedVOSingleCandidate(type, certLvl){
   const L=letterOf(type); if(!L||!CRAFTED_VO[L]) return null;
   const pool=CRAFTED_VO[L][String(certLvl)];
   return (pool && pool.length===1) ? pool[0] : null;
+}
+// The advanced line (Deepwell/MandalMotors/Koensayr) carries almost exactly HALF the
+// Armor of the baseline Mark N line at every level — verified against all 62 known
+// Capacitor/Engine/Main Reactor crafted samples (62/62 correct), a far larger and more
+// reliable gap than any other stat. Booster does NOT follow this (its two lines' armor
+// overlaps), so it's excluded. CRAFTED_DEFAULTS[type][lvl].Armor pools both lines into
+// one [min,max]: where a real Advanced sample exists at that level the range is
+// genuinely bimodal (max/min ratio ~2) and its geometric mean sits cleanly between the
+// two clusters; where we have NO Advanced sample on file at all (Main Reactor Cert 3/5 —
+// the missing Archetype B/C), the range collapses to just Mark N's own tight natural
+// variance (ratio ~1), so fall back to the universal ~50% ratio learned from every other
+// confirmed level/type instead: threshold = 75% of the (trustworthy) Mark N max, cleanly
+// splitting an expected ~50%-of-max Advanced roll from a ~100%-of-max Mark roll.
+const CRAFTED_ARMOR_SPLIT_TYPES=new Set(['Capacitor','Engine','Main Reactor']);
+function craftedVOByArmor(type, certLvl, armor){
+  // !armor also catches '' (csvToComponents' blank-stat sentinel) and 0, which loose
+  // isNaN(armor) alone would miss — isNaN('') is false ('' coerces to 0).
+  if(!CRAFTED_ARMOR_SPLIT_TYPES.has(type) || !armor || isNaN(armor)) return null;
+  const pool=(CRAFTED_VO[letterOf(type)]||{})[String(certLvl)];
+  if(!pool || pool.length!==2) return null;              // expects [Advanced, "Mark N …"]
+  const rng=craftedDefLookup(type, certLvl, 'Armor'); if(!rng || !rng.min) return null;
+  const threshold=(rng.max/rng.min>=1.3) ? Math.sqrt(rng.min*rng.max) : rng.max*0.75;
+  return armor<threshold ? pool[0] : pool[1];
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
