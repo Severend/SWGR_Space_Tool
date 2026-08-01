@@ -2511,6 +2511,9 @@ function parseTooltip(raw){
  if(source==='Crafted' && variationOf){
    const canonVO=canonicalCraftedVO(variationOf, type, certLvl);
    if(canonVO && canonVO!==variationOf) variationOf=canonVO;
+ } else if(source==='Crafted' && !variationOf){
+   const only=craftedVOSingleCandidate(type, certLvl);
+   if(only) variationOf=only;
  }
  // No real name recovered (a name-less part, or only OCR junk that got rejected):
  // give it a generic placeholder from the stat-detected type + level instead of
@@ -3084,6 +3087,16 @@ function canonicalCraftedVO(raw, type, certLvl){
     if(score<bestScore){ second=bestScore; bestScore=score; best=cand; } else if(score<second){ second=score; }
   }
   return (best && bestScore<second) ? best : null;
+}
+// When no "Variation Of:" text was captured at all (predates the field, or the
+// line wasn't visible in that screenshot), type+level can still fully determine
+// the schematic for types with only ONE known candidate at that level — Armor,
+// Droid Interface, Shield have no rarer named line, so there's nothing to
+// disambiguate. No name-matching involved; this is a lookup, not a guess.
+function craftedVOSingleCandidate(type, certLvl){
+  const L=letterOf(type); if(!L||!CRAFTED_VO[L]) return null;
+  const pool=CRAFTED_VO[L][String(certLvl)];
+  return (pool && pool.length===1) ? pool[0] : null;
 }
 // Best-fitting RE level for a row's stats, by how CENTRALLY the part's signature
 // stats sit within each level's datamined range. Adjacent levels' drop ranges
