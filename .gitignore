@@ -1,0 +1,19 @@
+# gh-pages: the GitHub Pages deploy branch.
+#
+# This branch is an ORPHAN of main and holds exactly one published artifact:
+# index.html, a copy of SWGR-ROGUE-Space-Tool.html from main. Everything else in
+# this working folder is private (HTML backups, feature specs, personal CSV
+# exports containing Owned parts and ship loadouts, local tooling), so ignore
+# everything by default and un-ignore only what we intend to publish.
+#
+# To update the published site after changing the tool on main:
+#
+#   git checkout gh-pages
+#   git checkout main -- SWGR-ROGUE-Space-Tool.html
+#   mv SWGR-ROGUE-Space-Tool.html index.html
+#   git add index.html && git commit -m "Publish <what changed>" && git push
+#   git checkout main
+#
+/*
+!.gitignore
+!index.html
