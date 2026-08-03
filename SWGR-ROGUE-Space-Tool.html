@@ -514,6 +514,9 @@
   .src-parts td,.src-parts th{font-size:11px;padding:5px 10px}
   .src-parts td.name-cell{white-space:normal;word-break:break-word}
   .src-parts td:nth-child(2),.src-parts th:nth-child(2),.src-parts td:last-child,.src-parts th:last-child{text-align:right;white-space:nowrap}
+  .sp-row{cursor:pointer}
+  .sp-row:hover{background:rgba(120,200,255,.08)}
+  .sp-row:hover td.name-cell{color:#fff}
   /* ---------- Part Hunter drawer (inverse of Source Hunter) ---------- */
   /* Its own drawer element so it can sit open beside the shared Source Hunter
      (#drawer). z-index above the Source Hunter mask(80)/drawer(90) so it stays
@@ -553,6 +556,8 @@
   .ph-wgrade{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10px;color:var(--txt-dim)}
   .ph-sh-btn{font-family:var(--mono);font-size:10px;color:var(--cyan);background:rgba(120,200,255,.08);border:1px solid var(--cyan);border-radius:6px;padding:3px 8px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:4px;transition:background .12s,color .12s}
   .ph-sh-btn:hover{background:rgba(120,200,255,.2);color:#fff}
+  .ph-sh-btn:disabled{opacity:.35;cursor:not-allowed}
+  .ph-sh-btn:disabled:hover{background:rgba(120,200,255,.08);color:var(--cyan)}
   .ph-cost{font-family:var(--mono);font-size:11px;color:var(--txt-dim);margin:-2px 0 8px;line-height:1.5}
   .ph-cost b{color:var(--amber)} .ph-cost .cr{color:var(--cyan)}
   .ph-flag{background:rgba(255,168,40,.1);border:1px solid rgba(255,168,40,.4);border-radius:6px;padding:6px 9px;margin:-2px 0 9px;font-size:11px;line-height:1.45;color:#ffcf8a}
@@ -571,6 +576,96 @@
   .ph-card .ph-math{margin:2px 0 10px}
   .ph-card .ph-math summary{font-size:10.5px}
   .ph-card .ph-math table th,.ph-card .ph-math table td{font-size:10.5px;padding:2px 6px}
+  /* ---------- Stat Distribution drawer (bell curves for one named part) ----------
+     Opened from Part List or a Source Hunter named-part row — both live in
+     #drawer — so it pairs beside #drawer exactly like #ph-drawer does, just one
+     slot further left/on top (highest z-index). Known limitation: if it's
+     opened while Part Hunter + a paired Source Hunter are ALSO both open (a
+     three-drawer chain), it visually lands on the same slot as #ph-drawer —
+     an edge case rare enough not to warrant a 3-column layout. */
+  #dist-drawer{z-index:105}
+  #dist-mask{z-index:100}
+  body.dist-paired #dist-drawer{right:min(560px,94vw)}
+  @media (max-width:1180px){
+    body.dist-paired #dist-drawer{width:48vw;right:50vw}
+    body.dist-paired #drawer{width:50vw}
+  }
+  .bc-multi{border:1px solid rgba(120,200,255,.35);background:rgba(120,200,255,.06);border-radius:9px;padding:10px 13px;margin-bottom:16px;font-family:var(--mono);font-size:12px;color:var(--txt-dim);line-height:1.6}
+  .bc-multi b{color:var(--cyan)}
+  .bc-multi .bc-multi-empty{color:var(--txt-dim);font-family:initial;font-size:12px}
+  .bc-card{border:1px solid var(--line);border-radius:9px;padding:12px 14px;margin-bottom:12px;background:rgba(255,255,255,.012)}
+  .bc-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .bc-head .bc-name{font-weight:600;color:#eaf2fb;font-size:13px}
+  .bc-head .bc-valin{margin-left:auto;width:96px;padding:4px 6px;font-size:11px;text-align:right}
+  .bc-svg{display:block;width:100%;height:auto}
+  .bc-svg .bc-fill{fill:rgba(120,200,255,.16)}
+  .bc-svg .bc-curve{fill:none;stroke:var(--cyan);stroke-width:1.6}
+  .bc-svg .bc-axis{stroke:var(--line2);stroke-width:1}
+  .bc-svg .bc-tick{stroke:var(--line);stroke-width:1}
+  .bc-svg .bc-ticklbl{font-family:var(--mono);font-size:8.5px;fill:var(--txt-dim)}
+  .bc-svg .bc-indicator{stroke:var(--amber);stroke-width:1.6;stroke-dasharray:3 2}
+  .bc-svg .bc-indicatorlbl{font-family:var(--mono);font-size:9px;fill:var(--amber);font-weight:600}
+  .bc-math{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--txt-dim)}
+  .bc-math b{color:#dbe7f5}
+  .bc-math .bc-pct{color:var(--cyan);font-weight:700}
+  .bc-fixed{color:var(--txt-dim);font-size:12px;margin-top:2px}
+  /* ---------- Part List drawer ---------- */
+  .pl-card{cursor:pointer;transition:background .12s,border-color .12s}
+  .pl-card:hover{background:rgba(120,200,255,.06);border-color:var(--line2)}
+  .pl-card .pl-go{font-size:8.5px;color:var(--cyan);opacity:0;letter-spacing:.3px;white-space:nowrap}
+  .pl-card:hover .pl-go{opacity:.9}
+  /* ---------- Probability Charts drawer ----------
+     Standalone (Component Analysis toolbar) or opened pre-filled from a Part
+     Hunter card's "Show Graphs" button, in which case it pairs beside
+     #ph-drawer specifically (that's the drawer the button lives in), the same
+     one-slot-further-left convention as the other paired drawers. Wider than
+     the other drawers (760px vs 560px) since a curve + its drop-source table
+     sit side by side — the .phg-* class names below predate the rename from
+     "Part Hunter Graphs" to the standalone feature but still just mean
+     "this drawer's parts list". */
+  #pc-drawer{width:min(760px,96vw);z-index:115}
+  #pc-mask{z-index:110}
+  body.pc-paired #pc-drawer{right:min(760px,96vw)}
+  @media (max-width:1400px){
+    body.pc-paired #pc-drawer{width:52vw;right:48vw}
+    body.pc-paired #ph-drawer{width:48vw}
+  }
+  .phg-part{border:1px solid var(--line);border-radius:9px;padding:11px 13px;margin-bottom:12px;background:rgba(255,255,255,.012)}
+  /* Wraps rather than squeezing the source name to one word per line when the
+     drawer is paired or on a narrow viewport. */
+  .phg-part-head{display:flex;flex-wrap:wrap;align-items:center;gap:2px 10px;font-weight:600;color:#eaf2fb;font-size:13px;margin-bottom:9px}
+  .phg-row{display:flex;gap:12px;align-items:flex-start;margin-bottom:10px}
+  .phg-row:last-child{margin-bottom:0}
+  .phg-row .phg-curve{flex:0 0 230px;width:230px}
+  .phg-sources{flex:1;min-width:0;padding-top:2px}
+  .phg-sources-lbl{font-size:9.5px;color:var(--txt-dim);text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+  .phg-sources table{width:100%}
+  .phg-sources td,.phg-sources th{font-size:11px;padding:4px 8px}
+  .pc-view-toggle{display:flex;gap:6px;margin-top:14px}
+  /* Both views' tables sit in the narrow right half of a curve+table row, and
+     brand/enemy names run long — pin the numeric columns and ellipsize the
+     name so the table always fits instead of side-scrolling. Last column is
+     the wider "To Obtain" (a count plus its unit). */
+  /* These tables are sized to fit exactly, but collapsed cell borders leave a
+     ~4px phantom scrollWidth that .table-wrap's overflow:auto answers with a
+     full 11px scrollbar under every table. Nothing real is clipped. */
+  .phg-sources .table-wrap{overflow-x:hidden}
+  /* These cards' tables are ≤6 rows, so the global sticky thead buys nothing —
+     and it paints over the drawer's own sticky header as a card scrolls past
+     it (pre-existing, visible in both views). Pin it back down. */
+  .phg-sources thead th{position:static}
+  .phg-sources table.pc-fit{table-layout:fixed;width:100%}
+  .phg-sources table.pc-fit th:not(:first-child),.phg-sources table.pc-fit td:not(:first-child){width:76px}
+  .phg-sources table.pc-fit th:last-child,.phg-sources table.pc-fit td:last-child{width:98px}
+  .phg-sources table.pc-fit td.name-cell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  @media (max-width:760px){ .phg-row{flex-direction:column} .phg-row .phg-curve{width:100%;flex-basis:auto} }
+  /* Paired + narrowed (<1400px, same threshold the pairing rules above use)
+     squeezes the row to roughly half-drawer width — too tight for curve+table
+     side by side even above the unconditional 760px stacking breakpoint. */
+  @media (max-width:1400px){
+    body.pc-paired .phg-row{flex-direction:column}
+    body.pc-paired .phg-row .phg-curve{width:100%;flex-basis:auto}
+  }
   /* ---------- overview level slider + clickable headers + level drawer ---------- */
   .ov-controls{display:flex;flex-wrap:wrap;align-items:center;gap:12px 18px;margin:0 0 18px;padding:12px 16px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.015)}
   .lvl-slider{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
@@ -840,6 +935,8 @@
       <button class="btn" id="btn-weights"><span class="ico">⚖</span> Weighting</button>
       <button class="btn" id="btn-hunter"><span class="ico">◎</span> Source Hunter</button>
       <button class="btn" id="btn-parthunter"><span class="ico">◈</span> Part Hunter</button>
+      <button class="btn" id="btn-partlist"><span class="ico">▤</span> Part List</button>
+      <button class="btn" id="btn-probcharts"><span class="ico">∿</span> Probability Charts</button>
       <div class="spacer"></div>
       <button class="btn danger ghost" id="btn-clear">Clear All</button>
     </div>
@@ -1132,6 +1229,37 @@
     <div class="meta" id="ph-sub">Which acquisition tier can give you the part you need?</div>
   </div>
   <div class="drawer-body" id="ph-body"></div>
+</aside>
+
+<!-- Stat Distribution drawer — bell curves for one named part. Opened from
+     Part List or from a Source Hunter named-part row, so it can sit paired
+     beside whichever of those (both use #drawer) is currently open. -->
+<div class="drawer-mask" id="dist-mask"></div>
+<aside class="drawer" id="dist-drawer">
+  <div class="drawer-head">
+    <div class="drawer-nav">
+      <button class="icon-btn x" id="dist-close" title="Close (Esc)">✕</button>
+    </div>
+    <h2 id="dist-name">—</h2>
+    <div class="meta" id="dist-meta"></div>
+  </div>
+  <div class="drawer-body" id="dist-body"></div>
+</aside>
+
+<!-- Probability Charts drawer — a standalone tool (Component Analysis toolbar)
+     that also opens pre-filled from a Part Hunter card's "Show Graphs" button
+     (only enabled when that card has exactly one active target stat), in
+     which case it pairs beside #ph-drawer specifically (not #drawer). -->
+<div class="drawer-mask" id="pc-mask"></div>
+<aside class="drawer" id="pc-drawer">
+  <div class="drawer-head">
+    <div class="drawer-nav">
+      <button class="icon-btn x" id="pc-close" title="Close (Esc)">✕</button>
+    </div>
+    <h2 id="pc-name">Probability Charts</h2>
+    <div class="meta" id="pc-meta"></div>
+  </div>
+  <div class="drawer-body" id="pc-body"></div>
 </aside>
 
 <!-- Add/Edit modal -->
@@ -1992,6 +2120,10 @@ function closeDrawer(){
   // If this drawer was a Source Hunter paired beside Part Hunter, un-shift Part
   // Hunter (which stays open) back to the edge.
   document.body.classList.remove('ph-paired');
+  // A Stat Distribution drawer (Part List / Source Hunter named-part row) has no
+  // meaning without this drawer's context — close it too, mirroring how
+  // closePartHunter cascades to the Source Hunter it opened beside it.
+  if(document.body.classList.contains('dist-paired')) closeDistDrawer();
   selectedIndex=null; srcDrawer=null; renderTable();
 }
 function fmt(v,dec){ if(v===''||v===null||v===undefined||isNaN(v))return '—'; return Number(v).toLocaleString(undefined,{minimumFractionDigits:dec,maximumFractionDigits:dec}); }
@@ -3409,17 +3541,53 @@ function kashComboOdds(type, lvl, cuts){
   brands.forEach(b=>{ let q=1; for(const c of cuts){ const pb=brandStatProb(b,type,c.key,c.value); if(pb==null){q=0;break;} q*=pb; } p+=q/N; });
   return {p, n:N};
 }
+// "Kash Nunes {typeletter}{level}" (e.g. "Kash Nunes R3") is a synthetic
+// SOURCES row for every type+level, not a real enemy — it's the token-
+// gambling mechanic. The raw SOURCES percentage baked in for it is each
+// part's drop-weight SHARE of the Kash pool (verified: matches w/Σw to 4
+// decimals) — but the rest of the app already models an actual Kash roll as
+// UNIFORM odds across the pool (kashPoolBrands/kashStatOdds, confirmed
+// against Seraph's tool to the digit), which contradicts that weighted
+// share. Corrects any Kash row to 1/(pool size) so every "drop sources"
+// display — Part List, Level Drawer, Source Hunter, Probability Charts —
+// agrees with the dedicated Kash Nunes roll odds shown elsewhere, instead of
+// re-deriving a different, wrong number from the raw weighted share.
+// The level suffix is always a SINGLE digit in the datamined names, so RE
+// level 10 is "0", not "10" ("Kash Nunes E0" is the level-10 Engine row —
+// verified across all 8 type letters: levels 1–9 use their own digit, level 10
+// uses 0, and no "…10" name exists anywhere in SOURCES). Building "E10" here
+// matched nothing, so at level 10 the uniform correction below silently never
+// applied and the row lost its isKash flag — it rendered with the raw weighted
+// drop shares and as kills-to-one instead of tokens.
+function kashSourceName(type, lvl){
+  const L=letterOf(type); if(!L) return null;
+  const n=Number(lvl);
+  return 'Kash Nunes '+L+(isNaN(n)?lvl:n%10);
+}
+function sourcesFor(path, type, lvl){
+  const raw=SOURCES[path]; if(!raw) return [];
+  const kashName=kashSourceName(type,lvl); if(!kashName) return raw;
+  const pool=kashPoolBrands(type,lvl);
+  const uniformP=pool&&pool.length ? 1/pool.length : null;
+  if(uniformP==null) return raw;
+  let changed=false;
+  const out=raw.map(function(s){ if(s.e===kashName){ changed=true; return {e:s.e, p:uniformP}; } return s; });
+  return changed?out:raw;
+}
 // Rank enemies to farm for a looted part meeting `cuts` at (type, lvl). Per
 // enemy: P(a kill yields a qualifier) ≈ Σ_parts dropRate·∏ brandStatProb.
 // Also carries the per-enemy parts breakdown so a row can expand to show which
 // named parts it drops, each with its drop rate and the chance a drop qualifies.
+// isKash flags a row as the token-gamble (not a real kill) so callers can
+// show "tokens to one" instead of "kills to one" for it.
 function bestSourcesFor(type, lvl, cuts){
   const parts=partsAt(type,lvl); if(!parts.length||!cuts.length) return [];
+  const kashName=kashSourceName(type,lvl);
   const agg={};   // enemy -> {perKill, parts:[{name,path,drop,q,contrib}]}
   parts.forEach(p=>{
     let q=1; for(const c of cuts){ const pb=brandStatProb(p,type,c.key,c.value); if(pb==null){q=0;break;} q*=pb; }
     if(q<=0) return;
-    const src=SOURCES[p.path]; if(!src) return;
+    const src=sourcesFor(p.path,type,lvl); if(!src.length) return;
     // SOURCES can list the same enemy twice for one part — sum its drop rate first.
     const byEnemy={};
     src.forEach(s=>{ byEnemy[s.e]=(byEnemy[s.e]||0)+s.p; });   // identical names summed; distinct kept
@@ -3431,7 +3599,11 @@ function bestSourcesFor(type, lvl, cuts){
     }
   });
   return Object.keys(agg).map(e=>{ const a=agg[e]; a.parts.sort((x,y)=>y.contrib-x.contrib);
-    return {e, perKill:a.perKill, kills:a.perKill>0?1/a.perKill:Infinity, parts:a.parts}; })
+    const rolls=a.perKill>0?1/a.perKill:Infinity;
+    const isKash=e===kashName;
+    return {e, perKill:a.perKill, kills:rolls, isKash,
+      tokens: isKash&&isFinite(rolls) ? rolls*tokenRollCost(lvl) : null,
+      parts:a.parts}; })
     .sort((a,b)=>b.perKill-a.perKill);
 }
 
@@ -3465,6 +3637,56 @@ function sourceControlsHTML(type, lvl){
     '<label class="field">COMPONENT TYPE<select id="sh-type">'+typeOpts+'</select></label>'+
     '<label class="field" style="max-width:120px">RE LEVEL<select id="sh-lvl">'+lvlOpts+'</select></label>'+
   '</div>';
+}
+let plState={type:null, lvl:1};
+// Part List — reachable from the Component Analysis toolbar. Browse a component
+// type + RE level's named parts with their stat ranges (reuses the level
+// drawer's card markup); clicking a part opens the Stat Distribution drawer
+// beside it with nothing pre-filled (contrast: Source Hunter's named-part rows
+// open the same drawer pre-filled with the active target values).
+function openPartList(){
+  const type=plState.type||defaultHuntType();
+  renderPartListDrawer(type, plState.lvl||1);
+}
+function renderPartListDrawer(type, lvl){
+  type=canonType(type); lvl=Number(lvl)||1;
+  plState={type,lvl};
+  selectedIndex=null; srcDrawer=null;
+  document.getElementById('d-name').textContent='Part List';
+  document.getElementById('d-meta').innerHTML=sourceControlsHTML(type, lvl);
+  document.getElementById('d-pos').textContent='';
+  document.getElementById('d-prev').disabled=true; document.getElementById('d-next').disabled=true;
+
+  const parts=partsAt(type,lvl), keys=statsForType(type);
+  const sorted=parts.slice().sort(function(a,b){return a.w-b.w;});
+  let cards='';
+  sorted.forEach(function(p){
+    let dist='';
+    keys.forEach(function(key){ const def=STAT_DEFS[key]; const br=brandRange(p,type,key); if(!br) return;
+      const rr=br.lo===br.hi?fmt(br.mean,def.dec):(def.better==='low'?fmt(br.hi,def.dec)+'<span class="ov-dash">–</span>'+fmt(br.lo,def.dec):fmt(br.lo,def.dec)+'<span class="ov-dash">–</span>'+fmt(br.hi,def.dec));
+      dist+='<span class="dist-item"><span class="dist-lbl">'+def.label+'</span><span class="dist-val">'+rr+'</span></span>'; });
+    const bo=partBestBo(p,type,lvl);
+    const tchip=bo!=null?'<span class="gchip '+rangeBandFromPct(bo).cls+'" style="font-size:11px;padding:2px 8px" title="best achievable roll: '+bo.toFixed(0)+'% Bo ('+rangeBandFromPct(bo).name+')">'+bo.toFixed(0)+'%</span>':'';
+    cards+='<div class="lvl-part pl-card" data-path="'+escapeHtml(p.path)+'"><div class="lvl-part-head"><span>'+escapeHtml(p.n)+'</span><span class="lvl-wt">drop weight '+p.w+'</span>'+tchip+'<span class="pl-go">DISTRIBUTIONS →</span></div>'+
+      '<div class="dist-grid">'+dist+'</div></div>';
+  });
+
+  document.getElementById('drawer-body').innerHTML=
+    '<div class="box-label">NAMED PARTS <span class="box-sub" style="text-transform:none;font-weight:400">· '+parts.length+', rarest first · click a part for its bell-curve stat distributions</span></div>'+
+    '<div id="pl-list">'+(cards||'<p class="src-empty" style="margin-top:4px">No named parts for <b>'+escapeHtml(type)+'</b> at RE Level '+lvl+'.</p>')+'</div>';
+
+  const typeSel=document.getElementById('sh-type'), lvlSel=document.getElementById('sh-lvl');
+  if(typeSel) typeSel.addEventListener('change',()=>renderPartListDrawer(typeSel.value, lvlSel?lvlSel.value:lvl));
+  if(lvlSel)  lvlSel.addEventListener('change',()=>renderPartListDrawer(typeSel?typeSel.value:type, lvlSel.value));
+
+  const list=document.getElementById('pl-list');
+  if(list) list.addEventListener('click', function(e){
+    const card=e.target.closest('.pl-card'); if(!card) return;
+    openDistDrawer(card.dataset.path, plState.type, plState.lvl, null);
+  });
+
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-mask').classList.add('open');
 }
 // (Re)build the Source Hunter drawer for a type + RE level. preselect={key,pct}
 // toggles just that stat on at that grade; null leaves every stat off.
@@ -3607,14 +3829,19 @@ function renderSourcesResults(){
         // expand to the named parts this enemy drops, each with its drop rate and
         // the chance a drop meets the cut (the two factors behind chance/kill).
         const partRows=r.parts.map(p=>
-          '<tr><td class="name-cell">'+escapeHtml(p.name)+'</td>'+
+          '<tr class="sp-row" data-path="'+escapeHtml(p.path)+'" title="View '+escapeHtml(p.name)+'&rsquo;s stat distributions"><td class="name-cell">'+escapeHtml(p.name)+'</td>'+
           '<td><b style="font-family:var(--mono);color:var(--cyan)">'+pctFmt(p.drop)+'%</b></td>'+
           '<td><span class="src-kills" style="color:var(--txt-dim)">'+pctFmt(p.q)+'%</span></td></tr>').join('');
+        // A Kash Nunes row is the token-gamble, not a real kill — show
+        // estimated tokens to one instead of kills to one for it.
+        const toOneDisp = r.isKash
+          ? (isFinite(r.tokens)?tokenNumFmt(r.tokens)+' tok':'∞')
+          : (isFinite(r.kills)?tokenNumFmt(r.kills):'∞');
         return '<details class="src-enemy"><summary>'+
             '<span class="se-caret">▸</span>'+
             '<span class="se-name">'+escapeHtml(r.e)+'</span>'+
             '<span class="se-chance">'+pctFmt(r.perKill)+'%</span>'+
-            '<span class="se-kills">'+(isFinite(r.kills)?tokenNumFmt(r.kills):'∞')+'</span>'+
+            '<span class="se-kills">'+toOneDisp+'</span>'+
           '</summary>'+
           '<div class="table-wrap"><table class="ov-table src-table src-parts"><thead><tr><th>Named part</th><th>≈ drop/kill</th><th>meets cut</th></tr></thead><tbody>'+partRows+'</tbody></table></div>'+
         '</details>';
@@ -3655,10 +3882,12 @@ function openPartHunter(){
 }
 function closePartHunter(){
   const paired=document.body.classList.contains('ph-paired');
+  const gpaired=document.body.classList.contains('pc-paired');
   document.getElementById('ph-drawer').classList.remove('open');
   document.getElementById('ph-mask').classList.remove('open');
   document.body.classList.remove('ph-paired');
   if(paired) closeDrawer();   // also dismiss the Source Hunter opened beside it
+  if(gpaired) closeProbabilityCharts();   // also dismiss the Show Graphs drawer opened beside it
 }
 // Active constraints = toggled-on target rows with a numeric value.
 function phActiveTargets(type){
@@ -3849,10 +4078,21 @@ function phCardHtml(c, type){
     cost='<div class="ph-cost">Donor cost ≈ <b class="cr">'+crStr+'</b>'+detail+'</div>'+phDonorMathHtml(c.reed);
     if(c.reed.flag) flag='<div class="ph-flag">⚠ '+escapeHtml(c.reed.flag)+'</div>';
   }
+  // Probability Charts is Looted-only and only ever plots one stat at a
+  // time, so the button is only live for a Looted tier with exactly one
+  // active target stat.
+  const activeN=phActiveTargets(type).length;
+  const graphsOff=c.source!=='Looted' || activeN!==1;
+  const graphsTitle=c.source!=='Looted'
+    ? 'Only available for Looted parts'
+    : activeN!==1
+      ? 'Only available when a single stat is selected'
+      : 'See this stat&rsquo;s distribution as a bell curve';
   return '<div class="ph-card'+(c.matched?'':' miss')+'">'+
     '<div class="ph-card-head"><span class="ph-src '+c.cls+'">'+c.source+'</span><span class="ph-lvl">'+c.label+'</span>'+
       '<span class="ph-wgrade">GRADE '+wgChip+'</span>'+
-      '<button type="button" class="ph-sh-btn" data-lvl="'+c.lvl+'" title="Open Source Hunter with all your target values at Lvl '+c.lvl+'">◎ Source Hunter</button></div>'+
+      '<button type="button" class="ph-sh-btn" data-lvl="'+c.lvl+'" title="Open Source Hunter with all your target values at Lvl '+c.lvl+'">◎ Source Hunter</button>'+
+      '<button type="button" class="ph-sh-btn ph-graphs-btn"'+(graphsOff?' disabled':'')+' data-lvl="'+c.lvl+'" title="'+graphsTitle+'">Show Graphs</button></div>'+
     cost+flag+
     '<div class="ph-grid">'+cells+'</div>'+
   '</div>';
@@ -3883,6 +4123,333 @@ function phDonorMathHtml(reed){
     (reed.flag?'<div class="gm-result" style="color:#ffcf8a">★ one donor per rare stat isn’t possible here — '+escapeHtml(reed.flag)+'</div>':'')+
   '</details>';
 }
+
+/* ---------- Probability Charts drawer ----------
+   Standalone (Component Analysis toolbar) tool: pick a component type, RE
+   Level and ONE stat, type a value, and see it plotted as a bell curve —
+   Looted only, since that's the only acquisition path with real per-brand
+   rolls, named parts, and drop sources (Crafted is crafter-skill-bounded
+   within a range with no discrete brand; REed is a donor + RE-bonus formula,
+   not rolled per named part — neither has anything real to plot per part).
+   Shows the TIER OVERALL (no per-brand data at the tier level, so it's
+   approximated as a Gaussian: mean = range midpoint, ±2σ = the full range,
+   same "mean±mod=±2σ" envelope convention used everywhere else) plus one
+   curve per named part, each with its top drop sources and the combined
+   "chance this kill nets a qualifying roll" (drop rate × P(meets value))
+   beside it. RE Level only, deliberately: named parts (BRANDS) are indexed
+   purely by RE Level (a game rule, no separate Cert-level index exists per
+   part), and there's no reliable RE↔Cert mapping for named parts yet to
+   offer a Cert view against — the app's "⚠ RE N?" flag is a statistical
+   plausibility warning on a *logged* part's stats (sometimes a real
+   mismatch, sometimes just a rare roll), not a ready-made per-part mapping.
+   Revisit if/when that mapping exists. Also reachable pre-filled from a Part
+   Hunter card's "Show Graphs" button — disabled there unless the tier is
+   Looted AND the card has exactly one active target stat, since this drawer
+   only ever plots one Looted stat at a time. */
+function gaussianTailProb(mean, sigma, value, better){
+  if(sigma<=0) return better==='low' ? (mean<=value?1:0) : (mean>=value?1:0);
+  const z=(value-mean)/sigma;
+  return better==='low' ? normCdf(z) : 1-normCdf(z);
+}
+// probFn(v) is only ever invoked once value is confirmed non-null — the tier
+// card passes a closure over the synthesized mean/sigma; per-part cards pass
+// brandStatProb bound to that specific part.
+function pcMathHTML(mean, sigma, value, def, probFn){
+  if(sigma<1e-9){
+    return '<div class="bc-fixed">Fixed roll — every copy rolls <b>'+statValueFmt(mean,def.dec)+'</b>.</div>';
+  }
+  if(value==null||isNaN(value)){
+    return '<div class="bc-math"><span>mean <b>'+statValueFmt(mean,def.dec)+'</b></span><span>σ <b>'+statValueFmt(sigma,def.dec)+'</b></span><span style="color:var(--txt-dim)">type a value to see z / percentile</span></div>';
+  }
+  const z=(value-mean)/sigma;
+  const p=probFn(value);
+  const dir=def.better==='low'?'≤':'≥';
+  return '<div class="bc-math"><span>mean <b>'+statValueFmt(mean,def.dec)+'</b></span><span>σ <b>'+statValueFmt(sigma,def.dec)+'</b></span>'+
+    '<span>z <b>'+z.toFixed(2)+'</b></span><span>P(roll '+dir+' '+statValueFmt(value,def.dec)+') <span class="bc-pct">'+pctSmart(p)+'</span></span></div>';
+}
+// effectiveDMRange reads the shared global `levelView` internally (via
+// displayLevel) rather than taking it as a param, and folds the user's own
+// logged Looted rows in grouped by whichever of RE Level / Certification
+// Level that's currently set to elsewhere in the app (Component Analysis /
+// Stat Overview) — this drawer is RE Level only, deliberately (see the doc
+// comment above), so force 're' regardless of that unrelated page-wide
+// state. Its cache key doesn't distinguish RE vs Cert, so bust it before AND
+// after the forced call so nothing leaks either direction.
+function pcEffectiveRange(type, lvl, key){
+  const saved=levelView;
+  levelView='re';
+  _effRangeCache={};
+  const rng=effectiveDMRange(type, lvl, key, {});
+  levelView=saved;
+  _effRangeCache={};
+  return rng;
+}
+// {type, lvl, stat, value} — value is the raw input string (kept as typed)
+// so re-render doesn't fight the user mid-keystroke; parsed on use.
+let pcState={type:null, lvl:1, stat:null, value:'', view:'sources'};
+function pcControlsHTML(){
+  const type=canonType(pcState.type);
+  const typeOpts=TYPE_LIST.map(function(t){return '<option value="'+escapeHtml(t)+'"'+(t===type?' selected':'')+'>'+escapeHtml(t)+'</option>';}).join('');
+  let lvlOpts=''; for(let L=1;L<=10;L++) lvlOpts+='<option value="'+L+'"'+(L===Number(pcState.lvl)?' selected':'')+'>'+L+'</option>';
+  const keys=statsForType(type);
+  if(!keys.includes(pcState.stat)) pcState.stat=keys[0]||null;
+  const statOpts=keys.map(function(k){return '<option value="'+k+'"'+(k===pcState.stat?' selected':'')+'>'+STAT_DEFS[k].label+'</option>';}).join('');
+  return '<div class="sh-controls">'+
+      '<label class="field">COMPONENT TYPE<select id="pc-type">'+typeOpts+'</select></label>'+
+      '<label class="field" style="max-width:110px">RE LEVEL<select id="pc-lvl">'+lvlOpts+'</select></label>'+
+    '</div>'+
+    '<div class="sh-controls" style="margin-top:10px">'+
+      '<label class="field">STAT<select id="pc-stat">'+statOpts+'</select></label>'+
+      '<label class="field" style="max-width:140px">VALUE<input type="text" inputmode="decimal" id="pc-value" placeholder="value"'+(pcState.value!==''?' value="'+escapeHtml(pcState.value)+'"':'')+'></label>'+
+    '</div>';
+}
+function wirePCControls(){
+  const typeSel=document.getElementById('pc-type'),
+        lvlSel=document.getElementById('pc-lvl'), statSel=document.getElementById('pc-stat'),
+        valIn=document.getElementById('pc-value');
+  typeSel.addEventListener('change',function(){ pcState.type=canonType(typeSel.value); pcState.stat=null; pcState.value=''; renderProbabilityCharts(); });
+  lvlSel.addEventListener('change',function(){ pcState.lvl=Number(lvlSel.value); renderPCBody(); });
+  statSel.addEventListener('change',function(){ pcState.stat=statSel.value; pcState.value=''; valIn.value=''; renderPCBody(); });
+  valIn.addEventListener('input',function(){ pcState.value=valIn.value; renderPCBody(); });
+}
+// Full rebuild: controls (type/level/stat/value) + the curves below. Only
+// called on open and on a TYPE change (the only control whose change
+// invalidates the others — a different type has a different stat list).
+function renderProbabilityCharts(){
+  document.getElementById('pc-meta').innerHTML=pcControlsHTML();
+  wirePCControls();
+  renderPCBody();
+}
+// Curves + named parts only — called on every level/level-by/stat/value
+// change, never touching #pc-meta so the control the user is interacting
+// with (esp. the value input mid-keystroke) is never rewritten out from
+// under them.
+function renderPCBody(){
+  const type=canonType(pcState.type), lvl=Number(pcState.lvl)||1, key=pcState.stat;
+  const out=document.getElementById('pc-body'); if(!out) return;
+  if(!key){ out.innerHTML='<p class="src-empty">No stats available for this type.</p>'; return; }
+  const def=STAT_DEFS[key];
+  const rng=pcEffectiveRange(type,lvl,key);
+  const raw=parseFloat(pcState.value);
+  const val=isNaN(raw)?null:raw;
+  const arrow=def.better==='high'?'<span style="color:var(--green)">↑</span>':'<span style="color:var(--amber)">↓</span>';
+
+  let overallHtml;
+  if(!rng){
+    overallHtml='<p class="src-empty">No Looted data for '+escapeHtml(type)+' at RE Level '+lvl+'.</p>';
+  } else {
+    const mean=(rng.min+rng.max)/2, sigma=(rng.max-rng.min)/4;
+    overallHtml='<div class="bc-card"><div class="bc-head"><span class="bc-name">'+def.label+' '+arrow+'</span></div>'+
+      '<div>'+(sigma<1e-9?'':bellCurveSVG(mean,sigma,val,def.better,def.dec))+'</div>'+
+      '<div>'+pcMathHTML(mean,sigma,val,def,function(v){return gaussianTailProb(mean,sigma,v,def.better);})+'</div></div>';
+  }
+
+  const view=pcState.view==='parts'?'parts':'sources';
+  const lowerHtml = view==='sources'
+    ? pcSourcesListHtml(type,lvl,key,def,val,arrow)
+    : pcPartsListHtml(type,lvl,key,def,val,arrow);
+  const lowerLabel = view==='sources'
+    ? 'DROP SOURCES <span class="box-sub" style="text-transform:none;font-weight:400">· what each source&rsquo;s drops look like for '+def.label+', with the named parts behind it (Kash Nunes pinned first)</span>'
+    : 'NAMED PARTS <span class="box-sub" style="text-transform:none;font-weight:400">· per-part distribution for '+def.label+', with top drop sources</span>';
+
+  out.innerHTML=
+    '<div class="box-label">TIER OVERVIEW <span class="box-sub" style="text-transform:none;font-weight:400">· approximated as a Gaussian (mean = range midpoint, ±2σ = the full range)</span></div>'+
+    overallHtml+
+    '<div class="pc-view-toggle">'+
+      '<button type="button" class="chip pc-view-chip'+(view==='sources'?' active':'')+'" data-pcview="sources">Drop Sources</button>'+
+      '<button type="button" class="chip pc-view-chip'+(view==='parts'?' active':'')+'" data-pcview="parts">Named Parts</button>'+
+    '</div>'+
+    '<div class="box-label" style="margin-top:10px">'+lowerLabel+'</div>'+
+    lowerHtml;
+
+  document.querySelectorAll('#pc-body .pc-view-chip').forEach(function(ch){
+    ch.addEventListener('click',function(){
+      pcState.view = ch.dataset.pcview==='parts' ? 'parts' : 'sources';
+      renderPCBody();
+    });
+  });
+}
+/* ---------- "To Obtain": a source's chance/attempt turned into a count ----------
+   A drop source isn't always an enemy you kill. SOURCES holds exactly four
+   kinds of row (verified against all 140 distinct names): Kash Nunes, a token
+   gamble where one attempt = one roll priced at tokenRollCost(lvl); "Crate: …"
+   (15 rows), reward crates you open; "Reward: …" (3 rows — duty completions
+   and dailies), which you turn in rather than kill; and 42 real enemies.
+   Both views show the same number — expected attempts to see ONE part that
+   meets the typed value — in whichever unit that source is actually farmed in. */
+function pcSourceUnit(name, type, lvl){
+  if(name===kashSourceName(type,lvl)) return 'tokens';
+  if(/^Crate:/i.test(name)) return 'crates';
+  if(/^Reward:/i.test(name)) return 'turn-ins';
+  return 'kills';
+}
+// Singular noun for one attempt ("2.1% per roll / crate / turn-in / kill").
+const PC_UNIT_ONE={tokens:'roll', crates:'crate', 'turn-ins':'turn-in', kills:'kill'};
+// chance = P(one attempt yields a qualifying part). For Kash the attempt is one
+// ROLL, so the expected roll count is converted to tokens at tokenRollCost().
+function pcToObtain(unit, lvl, chance){
+  if(chance==null||isNaN(chance)) return '<span style="color:var(--txt-dim)">—</span>';
+  if(!(chance>0)) return '<span style="color:var(--txt-dim)">∞</span>';
+  const n = unit==='tokens' ? (1/chance)*tokenRollCost(lvl) : 1/chance;
+  const disp=tokenNumFmt(n);
+  // "1 kills to one" reads as a typo — drop to the singular when it rounds to 1.
+  const noun = disp==='1' ? PC_UNIT_ONE[unit] : unit;
+  return '<b style="font-family:var(--mono);color:var(--amber)">'+disp+'</b> <span style="color:var(--txt-dim)">'+noun+'</span>';
+}
+// NAMED PARTS view: sorted by best chance/kill (drop rate × P(meets value),
+// descending) once a value is entered — the part most likely to hand you a
+// qualifying roll from a single kill goes on top. Sources are already sorted
+// by raw drop rate, and q is the same constant for every source of a given
+// part, so sources[0] is already that part's best chance/kill. Falls back to
+// the rarest-first (drop weight) ordering used elsewhere when no value is
+// typed yet, since chance/kill isn't defined without one.
+function pcPartsListHtml(type, lvl, key, def, val, arrow){
+  const parts=partsAt(type,lvl).map(function(p){
+    const br=brandRange(p,type,key); if(!br) return null;
+    const sigma=Math.abs(br.mean*br.mod)/2;
+    const q=val!=null?brandStatProb(p,type,key,val):null;
+    const sources=sourcesFor(p.path,type,lvl).slice().sort(function(a,b){return b.p-a.p;}).slice(0,6);
+    const bestChance=(q!=null&&sources.length)?sources[0].p*q:null;
+    return {p, br, sigma, q, sources, bestChance};
+  }).filter(Boolean);
+  parts.sort(function(a,b){
+    if(a.bestChance!=null && b.bestChance!=null) return b.bestChance-a.bestChance;
+    if(a.bestChance!=null) return -1;
+    if(b.bestChance!=null) return 1;
+    return a.p.w-b.p.w;
+  });
+  if(!parts.length) return '<p class="src-empty">No named parts with '+def.label+' data at this level.</p>';
+  return parts.map(function(x){
+    const srcRows=x.sources.length ? x.sources.map(function(s){
+      const pct=s.p*100, disp=pct>=10?pct.toFixed(0):pct>=1?pct.toFixed(1):pct.toFixed(2);
+      const obtain = x.q!=null
+        ? pcToObtain(pcSourceUnit(s.e,type,lvl), lvl, s.p*x.q)
+        : '<span style="color:var(--txt-dim)">—</span>';
+      return '<tr><td class="name-cell" title="'+escapeHtml(s.e)+'">'+escapeHtml(s.e)+'</td><td>'+disp+'%</td><td>'+obtain+'</td></tr>';
+    }).join('') : '<tr><td colspan="3" style="color:var(--txt-dim)">No drop sources found.</td></tr>';
+    return '<div class="phg-part"><div class="phg-part-head"><span>'+escapeHtml(x.p.n)+'</span><span class="lvl-wt">drop weight '+x.p.w+'</span></div>'+
+      '<div class="phg-row">'+
+        '<div class="bc-card phg-curve">'+
+          '<div class="bc-head"><span class="bc-name">'+def.label+' '+arrow+'</span></div>'+
+          '<div>'+(x.sigma<1e-9?'':bellCurveSVG(x.br.mean,x.sigma,val,def.better,def.dec))+'</div>'+
+          '<div>'+pcMathHTML(x.br.mean,x.sigma,val,def,function(v){return brandStatProb(x.p,type,key,v);})+'</div>'+
+        '</div>'+
+        '<div class="phg-sources"><div class="phg-sources-lbl">Top drop sources'+(val!=null?' · to obtain = 1 ÷ (drop rate × P(meets '+def.label+'))':'')+'</div>'+
+          '<div class="table-wrap"><table class="ov-table src-table pc-fit"><thead><tr><th>Source</th><th>Drop rate</th><th>To Obtain</th></tr></thead><tbody>'+srcRows+'</tbody></table></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+/* The stat distribution of what a source actually hands you. A source drops
+   several named parts, each rolling this stat on its own Gaussian, so the
+   honest curve is a MIXTURE: one component per droppable part, weighted by
+   that part's drop rate from this source. Parts with no datamined range for
+   the stat are skipped (nothing to plot). Returns null when nothing plots.
+   `s0` keeps each part's TRUE sigma for probability math; `sigma` is the
+   drawn one — a fixed-roll brand (σ=0) would otherwise be invisible inside a
+   mixture, so it's floored to a narrow spike. */
+function pcSourceMix(sourceName, type, lvl, key){
+  const comps=[];
+  partsAt(type,lvl).forEach(function(p){
+    const br=brandRange(p,type,key); if(!br) return;
+    let drop=0;
+    sourcesFor(p.path,type,lvl).forEach(function(s){ if(s.e===sourceName) drop+=s.p; });
+    if(drop<=0) return;
+    const sg=Math.abs(br.mean*br.mod)/2;
+    comps.push({w:drop, mean:br.mean, sigma:sg, s0:sg});
+  });
+  if(!comps.length) return null;
+  const wSum=comps.reduce(function(s,c){return s+c.w;},0);
+  comps.forEach(function(c){ c.w/=wSum; });
+  const means=comps.map(function(c){return c.mean;});
+  const spread=Math.max(
+    Math.max.apply(null,comps.map(function(c){return c.sigma;})),
+    (Math.max.apply(null,means)-Math.min.apply(null,means))/4
+  );
+  if(spread<1e-9) return {comps, mean:comps[0].mean, sigma:0, fixed:true};
+  comps.forEach(function(c){ if(c.sigma<spread*0.04) c.sigma=spread*0.04; });
+  const mean=comps.reduce(function(s,c){return s+c.w*c.mean;},0);
+  const m2=comps.reduce(function(s,c){return s+c.w*(c.sigma*c.sigma+c.mean*c.mean);},0);
+  return {comps, mean, sigma:Math.sqrt(Math.max(0,m2-mean*mean)), fixed:false};
+}
+// P(a part dropped by this source rolls at least as good as `value`) — the
+// mixture's tail, i.e. the drop-rate-weighted average of each part's own tail.
+function pcMixProb(mix, value, better){
+  return mix.comps.reduce(function(s,c){ return s + c.w*gaussianTailProb(c.mean,c.s0,value,better); },0);
+}
+// Mirrors pcMathHTML for the mixture: its own mean/σ, then the odds that one
+// drop from this source clears the bar (the shaded tail on the curve).
+function pcMixMathHTML(mix, value, def){
+  if(mix.fixed) return '<div class="bc-fixed">Fixed roll — every part this source drops rolls <b>'+statValueFmt(mix.mean,def.dec)+'</b>.</div>';
+  const head='<span>mean <b>'+statValueFmt(mix.mean,def.dec)+'</b></span><span>σ <b>'+statValueFmt(mix.sigma,def.dec)+'</b></span>';
+  if(value==null||isNaN(value)) return '<div class="bc-math">'+head+'<span style="color:var(--txt-dim)">type a value to see the odds</span></div>';
+  const dir=def.better==='low'?'≤':'≥';
+  return '<div class="bc-math">'+head+'<span>P(a drop rolls '+dir+' '+statValueFmt(value,def.dec)+') <span class="bc-pct">'+pctSmart(pcMixProb(mix,value,def.better))+'</span></span></div>';
+}
+// DROP SOURCES view: the inverse grouping of the Named Parts view, laid out
+// the same way — source first, its own mixture curve on the left, the named
+// parts it drops that qualify tabled beside it. Reuses bestSourcesFor() (the
+// same enemy-ranking math Source Hunter uses) with a single {key,value} cut,
+// already sorted by chance/attempt descending; Kash Nunes is then pinned to
+// the top whenever he's a valid source, since a token roll is the one
+// acquisition path that's always available regardless of where it ranks.
+function pcSourcesListHtml(type, lvl, key, def, val, arrow){
+  if(val==null) return '<p class="src-empty">Type a value above to rank drop sources.</p>';
+  const ranked=bestSourcesFor(type, lvl, [{key:key, value:val}]);
+  if(!ranked.length) return '<p class="src-empty">No drop source reaches this target — try a different value.</p>';
+  // Stable sort: Kash first, everyone else keeps bestSourcesFor's ranking.
+  const ordered=ranked.slice().sort(function(a,b){ return (b.isKash?1:0)-(a.isKash?1:0); });
+  return ordered.map(function(r){
+    const unit=pcSourceUnit(r.e,type,lvl), one=PC_UNIT_ONE[unit];
+    const partRows=r.parts.slice(0,6).map(function(p){
+      const dpct=p.drop*100, ddisp=dpct>=10?dpct.toFixed(0):dpct>=1?dpct.toFixed(1):dpct.toFixed(2);
+      return '<tr><td class="name-cell" title="'+escapeHtml(p.name)+'">'+escapeHtml(p.name)+'</td><td>'+ddisp+'%</td><td>'+pctSmart(p.q)+'</td><td>'+pcToObtain(unit,lvl,p.contrib)+'</td></tr>';
+    }).join('');
+    const mix=pcSourceMix(r.e,type,lvl,key);
+    const curveHtml = (mix && !mix.fixed && mix.sigma>1e-9) ? distCurveSVG(mix.comps, val, def.better, def.dec,
+      [0,.25,.5,.75,1].map(function(f){ return mix.mean+(f*2-1)*3*mix.sigma; })) : '';
+    const mathHtml = mix ? pcMixMathHTML(mix,val,def) : '<div class="bc-fixed">No datamined '+def.label+' range for what this source drops.</div>';
+    return '<div class="phg-part"><div class="phg-part-head"><span>'+escapeHtml(r.e)+'</span>'+
+        '<span class="lvl-wt">'+pctSmart(r.perKill)+' per '+one+'</span>'+
+        '<span class="lvl-wt" style="margin-left:auto">'+pcToObtain(unit,lvl,r.perKill)+' to one</span>'+
+      '</div>'+
+      '<div class="phg-row">'+
+        '<div class="bc-card phg-curve">'+
+          '<div class="bc-head"><span class="bc-name">'+def.label+' '+arrow+'</span></div>'+
+          '<div>'+curveHtml+'</div>'+
+          '<div>'+mathHtml+'</div>'+
+        '</div>'+
+        '<div class="phg-sources"><div class="phg-sources-lbl">Named parts this '+(r.isKash?'roll':unit==='kills'?'enemy':PC_UNIT_ONE[unit])+' can '+(r.isKash?'give':'drop')+' that meet '+def.label+' · to obtain = 1 ÷ (drop rate × P(meets))</div>'+
+          '<div class="table-wrap"><table class="ov-table src-table pc-fit"><thead><tr><th>Named part</th><th>Drop rate</th><th>P(meets)</th><th>To Obtain</th></tr></thead><tbody>'+partRows+'</tbody></table></div>'+
+        '</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+// Standalone entry (Component Analysis toolbar) — not paired with anything.
+function openProbabilityCharts(){
+  if(!pcState.type) pcState.type=defaultHuntType();
+  renderProbabilityCharts();
+  document.getElementById('pc-drawer').classList.add('open');
+  document.getElementById('pc-mask').classList.add('open');
+}
+// Pre-filled entry from a Part Hunter card's "Show Graphs" — pairs beside
+// #ph-drawer since that's the drawer the button lives in. Looted only (see
+// the drawer's own doc comment), so there's no source to pass through.
+function openProbabilityChartsFor(type, lvl, stat, value){
+  pcState={type:canonType(type), lvl:Number(lvl), stat, value:(value==null||isNaN(value))?'':String(value), view:pcState.view};
+  renderProbabilityCharts();
+  document.body.classList.add('pc-paired');
+  document.getElementById('pc-drawer').classList.add('open');
+  document.getElementById('pc-mask').classList.add('open');
+}
+function closeProbabilityCharts(){
+  document.getElementById('pc-drawer').classList.remove('open');
+  document.getElementById('pc-mask').classList.remove('open');
+  document.body.classList.remove('pc-paired');
+}
+
 function phRenderResults(){
   const out=document.getElementById('ph-results'); if(!out) return;
   const type=canonType(phState.type);
@@ -3956,8 +4523,20 @@ function renderPartHunter(){
   body.addEventListener('input', onInput);
   body.addEventListener('change', e=>{ if(e.target.dataset.role==='tog') onInput(e); });
   // click a result stat range → Source Hunter for that one stat; the card's
-  // "Source Hunter" button → Source Hunter with ALL targets filled in.
+  // "Source Hunter" button → Source Hunter with ALL targets filled in; the
+  // card's "Show Graphs" button → Probability Charts pre-filled with this
+  // tier's single active target stat (disabled otherwise, so targets.length
+  // is guaranteed ===1 here). Graphs is checked first — it also carries
+  // .ph-sh-btn for shared styling, so it'd otherwise match the plain Source
+  // Hunter check below too.
   document.getElementById('ph-results').addEventListener('click', e=>{
+    const gbtn=e.target.closest('.ph-graphs-btn[data-lvl]');
+    if(gbtn){
+      if(gbtn.disabled) return;
+      const targets=phActiveTargets(type); if(targets.length!==1) return;
+      openProbabilityChartsFor(type, gbtn.dataset.lvl, targets[0].key, targets[0].val);
+      return;
+    }
     const btn=e.target.closest('.ph-sh-btn[data-lvl]');
     if(btn){ openSourcesFromPartAll(type, btn.dataset.lvl); return; }
     const cell=e.target.closest('.ph-stat[data-key]'); if(!cell) return;
@@ -4006,7 +4585,7 @@ function openBrandDrawer(path){
     const arrow=def.better==='high'?'<span style="color:var(--green)">↑</span>':'<span style="color:var(--amber)">↓</span>';
     rows+='<tr><td class="ov-stat">'+def.label+' '+arrow+'</td><td><span class="ov-range">'+rng+'</span></td><td>'+bchip+'</td></tr>';
   });
-  const src=SOURCES[path]||[];
+  const src=sourcesFor(path,type,lvl);
   let srcHtml;
   if(src.length){
     srcHtml='<div class="table-wrap"><table class="ov-table src-table"><thead><tr><th>Enemy</th><th>≈ drops / kill</th></tr></thead><tbody>'+
@@ -4021,6 +4600,195 @@ function openBrandDrawer(path){
     srcHtml;
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-mask').classList.add('open');
+}
+
+/* ---------- Stat Distribution drawer: bell curves for one named part ----------
+   Every brand rolls each stat on a Gaussian whose ±2σ envelope is the datamined
+   mean±mod (see kashStatOdds/brandStatProb above — this reuses that exact model,
+   just drawn instead of only fed into odds math). Opened from Part List (blank)
+   or a Source Hunter named-part row (pre-filled with that row's active target
+   stats/values), paired beside whichever of those (#drawer) is open. */
+function normalPdf(x, mean, sigma){
+  if(sigma<=0) return 0;
+  const z=(x-mean)/sigma;
+  return Math.exp(-0.5*z*z)/(sigma*Math.sqrt(2*Math.PI));
+}
+// One stat's normal-curve plot: the PDF over ±3.4σ, the entered value's position
+// (dashed line) and the "at least as good" tail shaded — the same probability
+// brandStatProb() computes elsewhere, drawn here instead of just numeric.
+function bellCurveSVG(mean, sigma, value, better, dec){
+  return distCurveSVG([{w:1,mean:mean,sigma:sigma}], value, better, dec,
+    [-2,-1,0,1,2].map(function(n){return mean+n*sigma;}));
+}
+/* Shared plotter behind both curve flavours. comps = [{w, mean, sigma}] — one
+   component for the single-brand bell above, one per droppable named part
+   (weighted by its drop rate) for a drop source's MIXTURE curve, where "what
+   this source hands you" is a blend of several brands' rolls rather than one
+   bell. Weights are normalised here. tickVals are the x labels to print (mean
+   ±σ for a single bell, evenly spread across the span for a mixture). */
+function distCurveSVG(comps, value, better, dec, tickVals){
+  const W=320,H=112,padL=8,padR=8,padT=10,padB=22;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const wSum=comps.reduce(function(s,c){return s+c.w;},0)||1;
+  const cs=comps.map(function(c){return {w:c.w/wSum, mean:c.mean, sigma:c.sigma};});
+  const mixPdf=function(x){ let s=0; for(const c of cs) s+=c.w*normalPdf(x,c.mean,c.sigma); return s; };
+  const xMin=Math.min.apply(null,cs.map(function(c){return c.mean-3.4*c.sigma;}));
+  const xMax=Math.max.apply(null,cs.map(function(c){return c.mean+3.4*c.sigma;}));
+  // Screen x always runs worse→better, left→right — for a low-better stat
+  // (e.g. Mass) that means the raw axis is mirrored so the better (lower)
+  // value reads on the right just like a high-better stat's better (higher)
+  // value does, instead of flipping which side "better" is on per stat.
+  const xPix=better==='low'
+    ? v=>padL+(xMax-v)/(xMax-xMin)*plotW
+    : v=>padL+(v-xMin)/(xMax-xMin)*plotW;
+  const baseline=padT+plotH;
+  // A mixture's peak isn't at any one component's mean — take it off the
+  // sampled curve so the plot is always normalised to its own tallest point.
+  const N=96, pts=[];
+  for(let i=0;i<=N;i++){ const x=xMin+(xMax-xMin)*i/N; pts.push([x, mixPdf(x)]); }
+  const peak=pts.reduce(function(m,pt){return Math.max(m,pt[1]);},0);
+  const yPix=pdf=>padT+(1-(peak>0?pdf/peak:0))*plotH;
+  const curvePath='M'+pts.map(pt=>xPix(pt[0]).toFixed(1)+','+yPix(pt[1]).toFixed(1)).join(' L');
+
+  let fillPath='', indicatorSvg='';
+  if(value!=null && !isNaN(value)){
+    const vClamped=Math.max(xMin,Math.min(xMax,value));
+    const goodHigh=better!=='low';
+    const tailPts=pts.filter(pt=>goodHigh?pt[0]>=vClamped:pt[0]<=vClamped);
+    const edgeX=goodHigh?xMax:xMin;
+    const vPdf=mixPdf(vClamped);
+    const chain=goodHigh
+      ? [[vClamped,vPdf]].concat(tailPts).concat([[edgeX,0]])
+      : [[edgeX,0]].concat(tailPts).concat([[vClamped,vPdf]]);
+    fillPath='M'+xPix(chain[0][0]).toFixed(1)+','+baseline.toFixed(1)+
+      ' L'+chain.map(pt=>xPix(pt[0]).toFixed(1)+','+yPix(pt[1]).toFixed(1)).join(' L')+
+      ' L'+xPix(chain[chain.length-1][0]).toFixed(1)+','+baseline.toFixed(1)+' Z';
+    const x=xPix(vClamped);
+    const anchor=x<W/2?'start':'end', dx=x<W/2?3:-3;
+    indicatorSvg='<line class="bc-indicator" x1="'+x.toFixed(1)+'" y1="'+(padT-2)+'" x2="'+x.toFixed(1)+'" y2="'+baseline.toFixed(1)+'"/>'+
+      '<text class="bc-indicatorlbl" x="'+(x+dx).toFixed(1)+'" y="'+(padT+2)+'" text-anchor="'+anchor+'">'+Number(value).toFixed(dec)+'</text>';
+  }
+
+  const ticks=tickVals.filter(v=>v>=xMin&&v<=xMax);
+  const tickSvg=ticks.map(v=>{
+    const x=xPix(v).toFixed(1);
+    return '<line class="bc-tick" x1="'+x+'" y1="'+padT+'" x2="'+x+'" y2="'+baseline.toFixed(1)+'"/>'+
+      '<text class="bc-ticklbl" x="'+x+'" y="'+(baseline+13).toFixed(1)+'" text-anchor="middle">'+Number(v).toFixed(dec)+'</text>';
+  }).join('');
+
+  return '<svg class="bc-svg" viewBox="0 0 '+W+' '+H+'">'+
+    (fillPath?'<path class="bc-fill" d="'+fillPath+'"/>':'')+
+    '<path class="bc-curve" d="'+curvePath+'"/>'+
+    '<line class="bc-axis" x1="'+padL+'" y1="'+baseline.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+baseline.toFixed(1)+'"/>'+
+    tickSvg+indicatorSvg+
+  '</svg>';
+}
+function statValueFmt(v,dec){ return (v==null||isNaN(v))?'—':Number(v).toFixed(dec); }
+// Same "shrink to more decimals as it gets tiny" convention as the Source
+// Hunter/Kash odds displays, just exposed here for the per-part math readout.
+function pctSmart(p){
+  if(p==null||isNaN(p)) return '—';
+  const pc=p*100;
+  return (pc>=10?pc.toFixed(0):pc>=1?pc.toFixed(1):pc>=0.01?pc.toFixed(2):pc.toFixed(4))+'%';
+}
+function distCardSvgHTML(t, value){
+  if(t.sigma<1e-9) return '';
+  return bellCurveSVG(t.br.mean, t.sigma, (value==null||isNaN(value))?null:value, t.def.better, t.def.dec);
+}
+function distCardMathHTML(t, value){
+  if(t.sigma<1e-9){
+    return '<div class="bc-fixed">Fixed roll — every copy of this part rolls <b>'+statValueFmt(t.br.mean,t.def.dec)+'</b>.</div>';
+  }
+  if(value==null||isNaN(value)){
+    return '<div class="bc-math"><span>mean <b>'+statValueFmt(t.br.mean,t.def.dec)+'</b></span><span>σ <b>'+statValueFmt(t.sigma,t.def.dec)+'</b></span><span style="color:var(--txt-dim)">type a value to see z / percentile</span></div>';
+  }
+  const z=(value-t.br.mean)/t.sigma;
+  const p=brandStatProb(distDrawer.p, distDrawer.type, t.key, value);
+  const dir=t.def.better==='low'?'≤':'≥';
+  return '<div class="bc-math"><span>mean <b>'+statValueFmt(t.br.mean,t.def.dec)+'</b></span><span>σ <b>'+statValueFmt(t.sigma,t.def.dec)+'</b></span>'+
+    '<span>z <b>'+z.toFixed(2)+'</b></span><span>P(roll '+dir+' '+statValueFmt(value,t.def.dec)+') <span class="bc-pct">'+pctSmart(p)+'</span></span></div>';
+}
+let distDrawer=null;   // {path, type, lvl, p, tgts:[{key,def,br,sigma}]}
+// Rebuild one stat card's curve + math from its (unreplaced) value input —
+// never rewrites the input itself, so typing doesn't lose focus/cursor
+// (mirrors Source Hunter's syncSrcTgtLabel skipVal convention).
+function updateDistCard(card){
+  if(!distDrawer) return;
+  const key=card.dataset.key;
+  const t=distDrawer.tgts.find(x=>x.key===key); if(!t) return;
+  const vi=card.querySelector('[data-role=bcval]');
+  const v=vi?parseFloat(vi.value):NaN;
+  const value=isNaN(v)?null:v;
+  const svgWrap=card.querySelector('[data-role=bcsvg]'); if(svgWrap) svgWrap.innerHTML=distCardSvgHTML(t,value);
+  const mathWrap=card.querySelector('[data-role=bcmath]'); if(mathWrap) mathWrap.innerHTML=distCardMathHTML(t,value);
+}
+// Combined odds THIS part rolls every currently-entered stat at once — stats
+// are independent within a part (same assumption as kashComboOdds), so it's
+// simply the product of each active stat's brandStatProb.
+function updateDistMulti(){
+  if(!distDrawer) return;
+  const out=document.getElementById('bc-multi'); if(!out) return;
+  const active=[];
+  document.querySelectorAll('#dist-body .bc-card').forEach(card=>{
+    const key=card.dataset.key; const t=distDrawer.tgts.find(x=>x.key===key); if(!t||t.sigma<1e-9) return;
+    const vi=card.querySelector('[data-role=bcval]'); const v=vi?parseFloat(vi.value):NaN;
+    if(!isNaN(v)) active.push({t,v});
+  });
+  if(active.length<2){
+    out.innerHTML='<span class="bc-multi-empty">Enter a value for 2+ stats to see the combined odds this exact part rolls all of them together.</span>';
+    return;
+  }
+  let p=1;
+  active.forEach(a=>{ const pb=brandStatProb(distDrawer.p, distDrawer.type, a.t.key, a.v); p*=(pb==null?0:pb); });
+  const parts=active.map(a=>a.t.def.label+' '+(a.t.def.better==='low'?'≤':'≥')+' '+statValueFmt(a.v,a.t.def.dec)).join(' · ');
+  out.innerHTML=parts+'<br>P(this part rolls all at once) <b class="bc-pct">'+pctSmart(p)+'</b>'+(p>0?' · ≈ 1 in '+tokenNumFmt(1/p):'');
+}
+// preVals = {key: rawValue} to pre-fill (Source Hunter's active targets); null/
+// omitted keys stay blank (Part List's blank-slate open).
+function openDistDrawer(path, type, lvl, preVals){
+  const rec=PART_INDEX[path]; if(!rec) return;
+  type=canonType(type||rec.types[0]); lvl=Number(lvl)||rec.lvl;
+  const p=rec.part, L=letterOf(type);
+  const tgts=[];
+  (ORDER[L]||[]).forEach(function(key){
+    const def=STAT_DEFS[key]; if(!def) return;
+    const br=brandRange(p,type,key); if(!br) return;
+    const sigma=Math.abs(br.mean*br.mod)/2;   // mean±mod == ±2σ ⇒ σ = |mean·mod|/2
+    tgts.push({key,def,br,sigma});
+  });
+  distDrawer={path,type,lvl,p,tgts};
+  document.body.classList.add('dist-paired');
+  document.getElementById('dist-name').textContent=p.n;
+  document.getElementById('dist-meta').innerHTML='<span class="type-tag">'+escapeHtml(type)+'</span><span class="src">· RE Level '+lvl+'</span><span class="src">· drop weight '+p.w+'</span>';
+
+  const cards=tgts.map(function(t){
+    const arrow=t.def.better==='high'?'<span style="color:var(--green)">↑</span>':'<span style="color:var(--amber)">↓</span>';
+    const raw=preVals&&preVals[t.key]!=null?Number(preVals[t.key]):null;
+    const pv=(raw!=null&&!isNaN(raw))?raw:null;
+    return '<div class="bc-card" data-key="'+t.key+'">'+
+      '<div class="bc-head"><span class="bc-name">'+t.def.label+' '+arrow+'</span>'+
+        (t.sigma<1e-9?'':'<input type="text" inputmode="decimal" class="bc-valin" data-role="bcval" placeholder="value" title="Type a stat value to test"'+(pv!=null?' value="'+pv.toFixed(t.def.dec)+'"':'')+'>')+
+      '</div>'+
+      '<div data-role="bcsvg">'+distCardSvgHTML(t,pv)+'</div>'+
+      '<div data-role="bcmath">'+distCardMathHTML(t,pv)+'</div>'+
+    '</div>';
+  }).join('');
+
+  document.getElementById('dist-body').innerHTML=
+    '<div class="box-label">MULTI-STAT DISTRIBUTION <span class="box-sub" style="text-transform:none;font-weight:400">· combined odds this part rolls every entered value at once</span></div>'+
+    '<div class="bc-multi" id="bc-multi"></div>'+
+    '<div class="box-label">STAT DISTRIBUTIONS <span class="box-sub" style="text-transform:none;font-weight:400">· each stat rolls independently on a Gaussian (mean±mod = ±2σ)</span></div>'+
+    (cards||'<p class="src-empty">No stat data for this part.</p>');
+  updateDistMulti();
+
+  document.getElementById('dist-drawer').classList.add('open');
+  document.getElementById('dist-mask').classList.add('open');
+}
+function closeDistDrawer(){
+  document.getElementById('dist-drawer').classList.remove('open');
+  document.getElementById('dist-mask').classList.remove('open');
+  document.body.classList.remove('dist-paired');
+  distDrawer=null;
 }
 
 /* ---------- Per-RE-level drawer: rolled-up ranges + named parts + source roll-downs ---------- */
@@ -4073,7 +4841,7 @@ function openLevelDrawer(type,lvl){
       dist+='<span class="dist-item"><span class="dist-lbl">'+def.label+'</span><span class="dist-val">'+rr+'</span></span>'; });
     const bo=partBestBo(p,type,lvl);
     const tchip=bo!=null?'<span class="gchip '+rangeBandFromPct(bo).cls+' lvl-besttier" title="best achievable roll: '+bo.toFixed(0)+'% Bo ('+rangeBandFromPct(bo).name+')">'+bo.toFixed(0)+'%</span>':'';
-    const src=SOURCES[p.path]||[];
+    const src=sourcesFor(p.path,type,lvl);
     let srcHtml;
     if(src.length){
       srcHtml='<div class="table-wrap"><table class="ov-table src-table"><thead><tr><th>Enemy</th><th>≈ drops / kill</th></tr></thead><tbody>'+
@@ -5633,6 +6401,33 @@ document.getElementById('btn-hunter').addEventListener('click',openSourceHunter)
 document.getElementById('btn-parthunter').addEventListener('click',openPartHunter);
 document.getElementById('ph-close').addEventListener('click',closePartHunter);
 document.getElementById('ph-mask').addEventListener('click',closePartHunter);
+document.getElementById('btn-partlist').addEventListener('click',openPartList);
+document.getElementById('dist-close').addEventListener('click',closeDistDrawer);
+document.getElementById('dist-mask').addEventListener('click',closeDistDrawer);
+document.getElementById('dist-body').addEventListener('input', function(e){
+  if(e.target.dataset.role!=='bcval') return;
+  const card=e.target.closest('.bc-card'); if(card) updateDistCard(card);
+  updateDistMulti();
+});
+// Named-part rows in Source Hunter's per-enemy drop breakdown open the Stat
+// Distribution drawer pre-filled with whatever target stats are currently
+// toggled on. Delegated once on the persistent #drawer-body (rather than
+// re-attached inside renderSourcesResults, which reruns on every keystroke)
+// so it never stacks duplicate listeners; srcDrawer is null whenever Part
+// List/Level/Brand content occupies #drawer-body instead, so this is a no-op then.
+document.getElementById('drawer-body').addEventListener('click', function(e){
+  const row=e.target.closest('.src-parts tr[data-path]'); if(!row||!srcDrawer) return;
+  const preVals={};
+  document.querySelectorAll('#src-targets .src-tgt').forEach(r=>{
+    const tog=r.querySelector('[data-role=tog]'); if(!tog||!tog.checked) return;
+    const t=srcDrawer.tgts.find(x=>x.key===r.dataset.key); if(!t) return;
+    preVals[t.key]=targetValueOf(r,t);
+  });
+  openDistDrawer(row.dataset.path, srcDrawer.type, srcDrawer.lvl, preVals);
+});
+document.getElementById('pc-close').addEventListener('click',closeProbabilityCharts);
+document.getElementById('pc-mask').addEventListener('click',closeProbabilityCharts);
+document.getElementById('btn-probcharts').addEventListener('click',openProbabilityCharts);
 document.getElementById('weights-close').addEventListener('click',closeWeights);
 document.getElementById('weights-cancel').addEventListener('click',closeWeights);
 document.getElementById('weights-mask').addEventListener('click',e=>{ if(e.target.id==='weights-mask') closeWeights(); });
@@ -5783,7 +6578,7 @@ document.querySelectorAll('#comp-table thead th[data-sort]').forEach(th=>{
   });
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){ closeModal(); closeDrawer(); closeWeights(); closeFindDrawer(); closePartHunter(); return; }
+  if(e.key==='Escape'){ closeModal(); closeDrawer(); closeWeights(); closeFindDrawer(); closePartHunter(); closeDistDrawer(); closeProbabilityCharts(); return; }
   // Arrow keys step through parts while the drawer is open (ignore when typing in a field).
   const drawerOpen=document.getElementById('drawer').classList.contains('open');
   const inField=e.target && e.target.closest && e.target.closest('input,select,textarea');
