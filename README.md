@@ -1,14 +1,14 @@
-# SWGR ROGUE Space Tool
+# SWGR Space Tool
 
 A single-file, browser-based planning tool for **Star Wars Galaxies: Restoration**
-ROGUE-era ship components and loadouts. Open `SWGR-ROGUE-Space-Tool.html` in any
+ship components and loadouts. Open `SWGR-Space-Tool.html` in any
 modern browser — no install, no server, everything runs locally.
 
 ## Files
 
 | File | What it is |
 | --- | --- |
-| `SWGR-ROGUE-Space-Tool.html` | The tool. Download and open it in a browser. |
+| `SWGR-Space-Tool.html` | The tool. Download and open it in a browser. |
 | `community-sync.csv` | Community pool of **observed** component rolls, used by the tool's sync feature. |
 
 ## The community sync file
