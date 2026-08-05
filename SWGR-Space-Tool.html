@@ -3115,9 +3115,55 @@ function rowSuspectFlags(r){
   });
   return out.length ? out : null;
 }
+/* ---- stage 2: leave-one-out corroboration ----
+   The datamined check alone is too blunt on its own, because the table is
+   drop-sourced: a crafted part legitimately sits outside it, and a server cap
+   can pin a whole family of crafted parts to one value the loot table never
+   produces (crafted Borstel Energy/Shot is capped at 7.0 against a datamined
+   min of 14.1 — five real parts, five false alarms).
+
+   So a stage-1 hit asks a second question: drop THIS row from its peer pool,
+   and how far outside what's left does it sit? A cap or a real crafted cluster
+   is corroborated — its peers show the same value, so removing one changes
+   nothing and it clears. A typo has no corroboration: pull it out and nothing
+   else in the pool supports it, so it stays flagged.
+
+   Leave-one-out is what makes the peer pool usable at all here. Including the
+   row under test would let it vouch for itself, which is the same circularity
+   that made the observed-stretched ranges useless as a yardstick.
+
+   Peers are same type + same level + same SOURCE: crafted, looted and REed are
+   different populations, and a crafted cap says nothing about a looted roll.
+   Fewer than MIN_PEERS values means nothing can corroborate it — stay flagged. */
+const SUS_MIN_PEERS=2, SUS_TOL=0.25;
+function susPeerValues(row, key){
+  const type=row.ComponentType, src=row.Source||'';
+  const lvl=String(row.CertificationLevel||row.RELevel||'').trim();
+  const out=[];
+  DATA.forEach(r=>{
+    if(r===row) return;                                   // <- the leave-one-out
+    if(r.ComponentType!==type || (r.Source||'')!==src) return;
+    if(String(r.CertificationLevel||r.RELevel||'').trim()!==lvl) return;
+    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
+    out.push(Number(v));
+  });
+  return out;
+}
+function susCorroborated(row, f){
+  const peers=susPeerValues(row, f.key);
+  if(peers.length<SUS_MIN_PEERS) return false;
+  const lo=Math.min.apply(null,peers), hi=Math.max.apply(null,peers);
+  const tol=(hi-lo)*SUS_TOL;        // span 0 (a hard cap) demands an exact match
+  return f.v>=lo-tol && f.v<=hi+tol;
+}
 function syncSuspects(rows){
   const out=[];
-  rows.forEach(r=>{ const f=rowSuspectFlags(r); if(f) out.push({row:r, flags:f}); });
+  rows.forEach(r=>{
+    const flags=rowSuspectFlags(r);                        // stage 1: datamined
+    if(!flags) return;
+    const kept=flags.filter(f=>!susCorroborated(r,f));     // stage 2: peers, minus self
+    if(kept.length) out.push({row:r, flags:kept});
+  });
   return out;
 }
 let PENDING_SUSPECTS=[];   // [{row, flags}] awaiting keep/discard
