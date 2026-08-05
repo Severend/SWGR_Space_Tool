@@ -1537,6 +1537,30 @@ function ensureInstanceIds(rows){
   return added;
 }
 
+/* ---- zero is not a measurement ----
+   No component stat can legitimately read 0. A 0 in the data is always a capture
+   failure, from one of two sources: OCR reading a DAMAGED or DRAINED part (the
+   tooltip shows current/max and the current side has fallen to 0), or a
+   screenshot from an out-of-game tool that omits "through" values altogether.
+
+   The rows themselves are worth keeping — the best parts in the game are often
+   only ever shown to us that way — but the 0 must never reach a range. It drags
+   the pool minimum to zero, and every Bo% grade in that pool rescales against
+   it; it also blinded the export screen's low-side check, since nothing can read
+   as "far below" a minimum of 0 (three Back Shield HP 0.0 shields did exactly
+   this, 2026-08-05).
+
+   Read stats through this wherever a value feeds a range or a grade, so that
+   "absent" and "zero" are one case. The value stays in the row, still visible in
+   the table and still flagged at capture, so it can be corrected rather than
+   silently vanishing. */
+function obsNum(row, key){
+  const v = row[key];
+  if(v===''||v==null||isNaN(v)) return null;
+  const n = Number(v);
+  return n===0 ? null : n;      // 0 == not measured
+}
+
 /* ============================================================
    STATISTICS ENGINE — Bo% (Best-of %) grading
    ============================================================ */
@@ -1676,9 +1700,8 @@ function scoreDataset(rows, applyRounding){
     keys.forEach(key=>{
       const vals = [];
       groups[gk].forEach(idx=>{
-        let v = rows[idx][key];
-        if(v!==''&&v!==null&&v!==undefined&&!isNaN(v)){
-          v = Number(v);
+        let v = obsNum(rows[idx], key);
+        if(v!==null){
           if(applyRounding) v = launchRound(key,v);
           vals.push(v);
         }
@@ -2308,6 +2331,12 @@ function ocrStatFlags(data){
     const raw=data[key];
     if(raw===''||raw==null||isNaN(raw)) return;
     const v=Number(raw);
+    // 0 is never a real reading — it means the part was DAMAGED or DRAINED when
+    // the shot was taken (tooltip shows current/max and current has fallen to
+    // 0), or the capture came from an out-of-game tool that omits through
+    // values. Flag it on its own, before any range check: a 0 can't be judged
+    // against a range, and it's the one misread the scanner can name exactly.
+    if(v===0){ flags[key]={dir:'zero', v}; return; }
     const rng = finalDmLookup(type, lvl, key) || unionCraftedRange(type,key);
     if(!rng || rng.min==null || rng.max==null || rng.max<=0) return;
     if(v > rng.max*HIGH)                  flags[key]={dir:'high', v, bound:rng.max};
@@ -2321,12 +2350,19 @@ function applyStatFlags(data){
     const el=document.getElementById('fld-'+key); if(!el) return;
     const f=flags[key], dec=STAT_DEFS[key].dec, lab=el.closest('label');
     el.classList.add('stat-suspect');
-    el.title='Sanity check: '+fmt(f.v,dec)+' is far '+(f.dir==='high'?'above':'below')+
-      ' the expected range for this type/level ('+(f.dir==='high'?'max ~'+fmt(f.bound,dec):'min ~'+fmt(f.bound,dec))+
-      '). Likely an OCR misread — verify against the screenshot.';
+    el.title = f.dir==='zero'
+      ? '0 is not a possible value for this stat. The part was most likely damaged or drained '+
+        'when the screenshot was taken (the tooltip shows current/max, and current had fallen to '+
+        '0), or the capture omits through values. Enter the MAX value, or clear the field — a 0 '+
+        'is excluded from every range either way.'
+      : 'Sanity check: '+fmt(f.v,dec)+' is far '+(f.dir==='high'?'above':'below')+
+        ' the expected range for this type/level ('+(f.dir==='high'?'max ~'+fmt(f.bound,dec):'min ~'+fmt(f.bound,dec))+
+        '). Likely an OCR misread — verify against the screenshot.';
     if(lab && !lab.querySelector('.stat-suspect-note')){
       const s=document.createElement('span'); s.className='stat-suspect-note';
-      s.textContent='⚠ far '+(f.dir==='high'?'above':'below')+' expected range — check';
+      s.textContent = f.dir==='zero'
+        ? '⚠ 0 is not possible — damaged/drained part? enter the max'
+        : '⚠ far '+(f.dir==='high'?'above':'below')+' expected range — check';
       lab.appendChild(s);
     }
     el.addEventListener('input', function(){ el.classList.remove('stat-suspect'); el.removeAttribute('title'); const n=lab&&lab.querySelector('.stat-suspect-note'); if(n)n.remove(); }, {once:true});
@@ -3108,6 +3144,11 @@ function rowSuspectFlags(r){
     const raw=r[key];
     if(raw===''||raw==null||isNaN(raw)) return;
     const v=Number(raw);
+    // 0 is a capture failure, not a value — flag on sight, independent of any
+    // range. It also can't be range-checked: obsNum keeps zeros out of the
+    // ranges now, but a pool whose min is legitimately near 0 would never trip
+    // the low test anyway.
+    if(v===0){ out.push({key, dir:'zero', v}); return; }
     const rng=dmLookup(r.ComponentType, lvl, key);
     if(!rng || rng.min==null || rng.max==null || rng.max<=0) return;
     if(v > rng.max*HIGH)                  out.push({key, dir:'high', v, bound:rng.max});
@@ -3144,12 +3185,18 @@ function susPeerValues(row, key){
     if(r===row) return;                                   // <- the leave-one-out
     if(r.ComponentType!==type || (r.Source||'')!==src) return;
     if(String(r.CertificationLevel||r.RELevel||'').trim()!==lvl) return;
-    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
-    out.push(Number(v));
+    // obsNum, not a raw read: a peer sitting at 0 is a failed capture, and
+    // letting it into the span would stretch the corroboration window down to
+    // zero — a broken reading vouching for a too-low one.
+    const n=obsNum(r,key); if(n==null) return;
+    out.push(n);
   });
   return out;
 }
 function susCorroborated(row, f){
+  // Zero is impossible by domain rule, so other zeros are corroborating
+  // evidence of a shared capture bug, not of a real value. Never clear one.
+  if(f.dir==='zero') return false;
   const peers=susPeerValues(row, f.key);
   if(peers.length<SUS_MIN_PEERS) return false;
   const lo=Math.min.apply(null,peers), hi=Math.max.apply(null,peers);
@@ -3243,6 +3290,10 @@ function mergeSharedComponents(parsed){
 /* ---- suspect review drawer ---- */
 function susFlagLine(f){
   const def=STAT_DEFS[f.key]||{label:f.key,dec:1};
+  if(f.dir==='zero'){
+    return '<div class="sus-flag">'+escapeHtml(def.label)+' <b>0.0</b> — not a possible value; '+
+           'the part was damaged or drained when captured, or the source omits through values</div>';
+  }
   const dir=f.dir==='high'?'above':'below';
   return '<div class="sus-flag">'+escapeHtml(def.label)+' <b>'+statValueFmt(f.v,def.dec)+'</b> — far '+dir+
          ' the expected range for this type/level ('+(f.dir==='high'?'max ~':'min ~')+statValueFmt(f.bound,def.dec)+')</div>';
@@ -5364,8 +5415,7 @@ function effectiveDMRange(type, lvl, key, opts){
   DATA.forEach(r=>{
     if(r.ComponentType!==type) return;
     if(shipClassOf(r)!==shipClass) return;
-    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
-    const n=Number(v);
+    const n=obsNum(r,key); if(n==null) return;
     if(r.Source==='Looted'){
       // A looted part sits in the pool for the level it's displayed under.
       if(!lvls.includes(String(displayLevel(r)))) return;
@@ -5441,8 +5491,7 @@ function finalDmLookup(type, lvl, key, opts){
     if(r.Source!=='Crafted' && r.Source!=='REed') return;
     if(!lvls.includes(String(displayLevel(r)))) return;
     if(shipClassOf(r)!==shipClass) return;
-    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
-    let n=Number(v);
+    let n=obsNum(r,key); if(n==null) return;
     if(cap!=null) n = dir===1 ? Math.min(n,cap) : Math.max(n,cap);
     fold(n);
   });
@@ -5490,8 +5539,8 @@ function craftedRange(type, lvl, key, opts){
     if(r.Source!=='Crafted') return;
     if(!lvls.includes(String(displayLevel(r)))) return;
     if(shipClassOf(r)!==shipClass) return;
-    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
-    fold(Number(v));
+    const n=obsNum(r,key); if(n==null) return;
+    fold(n);
   });
   const result=(lo===Infinity)?null:{min:lo,max:hi};
   _craftedRangeCache[ck]=result;
@@ -5526,8 +5575,8 @@ function reedRange(type, lvl, key, opts){
     if(r.Source!=='REed') return;
     if(!lvls.includes(String(displayLevel(r)))) return;
     if(shipClassOf(r)!==shipClass) return;
-    const v=r[key]; if(v===''||v==null||isNaN(v)) return;
-    let n=Number(v); if(cap!=null) n=dir===1?Math.min(n,cap):Math.max(n,cap);
+    let n=obsNum(r,key); if(n==null) return;
+    if(cap!=null) n=dir===1?Math.min(n,cap):Math.max(n,cap);
     fold(n);
   });
   const result=(lo===Infinity)?null:{min:lo,max:hi};
