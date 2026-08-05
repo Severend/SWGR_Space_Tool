@@ -930,6 +930,7 @@
       <button class="btn" id="btn-load"><span class="ico">▣</span> Load CSV</button>
       <button class="btn" id="btn-import"><span class="ico">⇩</span> Import Shared</button>
       <button class="btn" id="btn-sync"><span class="ico">⟳</span> Community Sync</button>
+      <button class="chip" id="btn-autosync" title="Sync the community pool automatically: once when the page loads, and again after every Load CSV (which replaces your dataset and would otherwise discard synced parts). Turn off to sync only when you press Community Sync.">Auto</button>
       <button class="btn" id="btn-export"><span class="ico">⇧</span> Export CSV</button>
       <button class="btn" id="btn-export-sync"><span class="ico">☁</span> Export for Sync</button>
       <button class="btn" id="btn-weights"><span class="ico">⚖</span> Weighting</button>
@@ -2946,6 +2947,7 @@ document.getElementById('file-input').addEventListener('change',e=>{
       const parsed=csvToComponents(ev.target.result);
       if(!parsed.length){ toast('No valid components found in CSV'); return; }
       const missingIds = parsed.filter(p=>!p.InstanceId).length;
+      let replacedDataset = false;
       if(importMode){
         const {added,dupes,renamed} = mergeSharedComponents(parsed);
         toast(`Imported ${added} shared component(s) as Observed`
@@ -2955,9 +2957,13 @@ document.getElementById('file-input').addEventListener('change',e=>{
         DATA = parsed;
         toast(`Loaded ${parsed.length} component(s)`);
         if(typeof loadShipsFromCSV==='function') loadShipsFromCSV(ev.target.result);
+        replacedDataset = true;
       }
       recompute();
       if(missingIds) toast(`Assigned IDs to ${missingIds} part(s) — export to make them permanent`);
+      // A full load REPLACES the dataset, dropping any community parts already
+      // merged in — re-pull them. Import Shared merges, so it needs no re-sync.
+      if(replacedDataset) autoSync();
     }catch(err){ toast('CSV parse error: '+err.message); }
   };
   reader.readAsText(file);
@@ -3029,26 +3035,52 @@ function mergeSharedComponents(parsed){
   return { added: fresh.length, dupes, renamed, filledVO };
 }
 
-async function communitySync(){
+/* ---- auto-sync ----
+   The community pool SUPPLEMENTS the user's own file, but "Load CSV" REPLACES
+   the dataset outright — so the normal habit (open page → Community Sync →
+   Load CSV) throws the synced parts away, and the sync has to be repeated by
+   hand. Auto-sync closes that: pull on page load, and pull again after every
+   full CSV load, so the shared Observed pool survives the replace. Default ON;
+   off means sync only when the button is pressed. */
+const AUTOSYNC_KEY='rogue-autosync';
+let AUTO_SYNC = (localStorage.getItem(AUTOSYNC_KEY)!=='0');   // absent = on
+function renderAutoSyncChip(){ const c=document.getElementById('btn-autosync'); if(c) c.classList.toggle('active', AUTO_SYNC); }
+function setAutoSync(on){
+  AUTO_SYNC=!!on;
+  try{ localStorage.setItem(AUTOSYNC_KEY, AUTO_SYNC?'1':'0'); }catch(_){}
+  renderAutoSyncChip();
+  toast(AUTO_SYNC?'Auto-sync on — community data pulls on load and after Load CSV'
+                 :'Auto-sync off — use Community Sync to pull manually');
+}
+// Fire-and-forget wrapper for the automatic triggers. No-ops when the toggle is
+// off, and stays quiet on the "nothing new" case so a routine page load doesn't
+// announce itself; failures are still reported, since a silent one would leave
+// the user believing they have community data when they don't.
+function autoSync(){ return AUTO_SYNC ? communitySync({auto:true}) : Promise.resolve(); }
+
+async function communitySync(opts){
+  const auto = !!(opts&&opts.auto);
   const btn=document.getElementById('btn-sync');
   if(btn) btn.disabled=true;
-  toast('Syncing community data…');
+  if(!auto) toast('Syncing community data…');
+  const fail = m => toast((auto?'Auto-sync':'Community sync')+' '+m);
   try{
     const res=await fetch(COMMUNITY_SYNC_URL,{cache:'no-store'});
-    if(!res.ok){ toast('Community sync failed: HTTP '+res.status); return; }
+    if(!res.ok){ fail('failed: HTTP '+res.status); return; }
     const text=await res.text();
     let parsed;
     try{ parsed=csvToComponents(text); }
-    catch(err){ toast('Community sync parse error: '+err.message); return; }
-    if(!parsed.length){ toast('Community file had no components'); return; }
+    catch(err){ fail('parse error: '+err.message); return; }
+    if(!parsed.length){ fail('found no components in the community file'); return; }
     const {added,dupes,renamed,filledVO}=mergeSharedComponents(parsed);
     recompute();
-    toast(`Community sync: added ${added} new`
+    if(auto && !added && !renamed && !filledVO) return;   // routine no-op, say nothing
+    toast(`${auto?'Auto-sync':'Community sync'}: added ${added} new`
       +(renamed?` · corrected ${renamed} name${renamed>1?'s':''}`:'')
       +(filledVO?` · filled in ${filledVO} Variation Of`:'')
       +(dupes?` · skipped ${dupes} already had`:''));
   }catch(err){
-    toast('Community sync failed: '+((err&&err.message)||err)+' — check your connection');
+    fail('failed: '+((err&&err.message)||err)+' — check your connection');
   }finally{
     if(btn) btn.disabled=false;
   }
@@ -6326,7 +6358,8 @@ document.querySelectorAll('nav.tabs button').forEach(b=>{
 });
 document.getElementById('btn-load').addEventListener('click',()=>triggerLoad(false));
 document.getElementById('btn-import').addEventListener('click',()=>triggerLoad(true));
-document.getElementById('btn-sync').addEventListener('click',communitySync);
+document.getElementById('btn-sync').addEventListener('click',()=>communitySync());
+document.getElementById('btn-autosync').addEventListener('click',()=>setAutoSync(!AUTO_SYNC));
 document.getElementById('btn-export').addEventListener('click',exportCSV);
 document.getElementById('btn-export-sync').addEventListener('click',exportCommunitySync);
 document.getElementById('btn-clear').addEventListener('click',()=>{
@@ -7195,6 +7228,8 @@ function init(){
   initReverse();
   renderGuide();
   recompute();
+  renderAutoSyncChip();
+  autoSync();          // page-load pull; no-ops when the toggle is off
 }
 init();
 </script>
