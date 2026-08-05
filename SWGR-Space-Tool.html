@@ -1301,9 +1301,9 @@
   <div class="drawer-body" id="pc-body"></div>
 </aside>
 
-<!-- Suspect review: rows held back at the community-sync boundary because a stat
-     reads far outside its type/level range. Held, never auto-dropped — a record
-     roll and a typo look identical to a threshold, so a human decides. -->
+<!-- Suspect review: opened by Export for Sync when a row in the dataset has a stat
+     far outside its type/level range. Maintainer-side only — never auto-dropped,
+     since a record roll and a typo look identical to a threshold. -->
 <div class="drawer-mask" id="sus-mask"></div>
 <aside class="drawer" id="sus-drawer">
   <div class="drawer-head">
@@ -3002,12 +3002,11 @@ document.getElementById('file-input').addEventListener('change',e=>{
       const missingIds = parsed.filter(p=>!p.InstanceId).length;
       let replacedDataset = false;
       if(importMode){
-        const {added,dupes,renamed,held} = mergeSharedComponents(parsed);
+        const {added,dupes,renamed,corrected} = mergeSharedComponents(parsed);
         toast(`Imported ${added} shared component(s) as Observed`
+          + (corrected ? ` · updated ${corrected} corrected part${corrected>1?'s':''}` : '')
           + (renamed ? ` · corrected ${renamed} name${renamed>1?'s':''}` : '')
-          + (dupes ? ` · skipped ${dupes} duplicate${dupes>1?'s':''}` : '')
-          + (held ? ` · ${held} held for review` : ''));
-        if(held) openSuspects();
+          + (dupes ? ` · skipped ${dupes} duplicate${dupes>1?'s':''}` : ''));
       } else {
         DATA = parsed;
         toast(`Loaded ${parsed.length} component(s)`);
@@ -3065,27 +3064,56 @@ const COMMUNITY_SYNC_URL = 'https://raw.githubusercontent.com/Severend/SWGR_Spac
 // on a part the user owns. Different stat rolls keep their own rows (all stats are
 // in the key), so range-filling variety is preserved. Returns {added, dupes,
 // renamed}. Shared by Import Shared (file) and Community Sync (URL).
-/* ---- suspect screening at the community-sync boundary ----
+/* ---- suspect screening: MAINTAINER-SIDE ONLY ----
    A single mistyped stat poisons a whole tier: the effective range stretches to
    fit it, every Bo% grade in the pool rescales, and the Probability Charts tier
    curve widens until real record rolls read as ordinary (a -LETS- engine logged
    at yaw 735.7 instead of 75.7 pushed RE6 Engine yaw from 58.8–67.6 out to
    58.8–700.7, turning a 4% roll into a 97% one — 2026-08-05).
 
-   Screening happens HERE, at the boundary, rather than by narrowing the ranges
-   downstream: the stretch is the feature — it is how the tool learns what the
-   best achievable drop is — so the fix is keeping bad numbers out, not
-   distrusting good ones. Uses ocrStatFlags, the same >2.5x-max / <0.5x-min
-   detector the scan modal marks fields with, so "suspect" means one thing
-   everywhere in the app.
+   Screening runs at EXPORT FOR SYNC and nowhere else. It was briefly wired into
+   the sync/import merge too; that was wrong — the merge runs on every page load
+   for every player, so it would put a review prompt in front of people who
+   didn't author the data and can't judge it. The file is curated by one
+   maintainer, so the check belongs where they add to it. Everyone else just
+   receives the cleaned file.
 
-   Flagged rows are HELD, never dropped: a genuine record roll looks exactly
-   like a typo to a threshold, and discarding those silently would defeat the
-   tool's whole purpose. The user keeps or discards each one. */
+   Uses ocrStatFlags, the same >2.5x-max / <0.5x-min detector the scan modal
+   marks fields with, so "suspect" means one thing everywhere in the app.
+
+   Flagged rows are HELD, never auto-dropped: a genuine record roll looks
+   exactly like a typo to a threshold, and discarding those silently would
+   defeat the tool's whole purpose. The maintainer keeps or discards each. */
+/* MUST use the raw datamined table (dmLookup), NOT ocrStatFlags.
+   ocrStatFlags checks against finalDmLookup, which seeds from effectiveDMRange —
+   the observed-STRETCHED range. That's right in the scan modal, where the part
+   being checked isn't in the dataset yet, but it is self-defeating here: this
+   screen runs at export, over rows already merged, so every bad value has
+   already widened the range it would be measured against. Observed live:
+   Shield L4 Armor 7258.7 sat inside a "max" of 7549.05 — which was 7258.7 x the
+   RE bonus, the value validating itself. Three shields with Back Shield HP 0.0
+   had likewise dragged that pool's min to 0, so nothing read as too low.
+
+   The datamined table is fixed reference data, so it cannot be moved by the
+   thing it is judging. Same 2.5x / 0.5x thresholds as the scan modal, which
+   leaves ample headroom for a legitimate RE bonus or a crafted outlier. Stats
+   with no datamined row are skipped rather than guessed at. */
 function rowSuspectFlags(r){
-  const flags=ocrStatFlags(r);
-  const keys=Object.keys(flags);
-  return keys.length ? keys.map(k=>({key:k, ...flags[k]})) : null;
+  if(!r || !r.ComponentType || !COMPONENT_TYPES[r.ComponentType]) return null;
+  if(String(r.ShipClass||'')==='POV') return null;      // POV magnitudes differ; no fighter range applies
+  const lvl = r.CertificationLevel || r.RELevel || '';
+  const HIGH=2.5, LOW=0.5;
+  const out=[];
+  statsForType(r.ComponentType).forEach(key=>{
+    const raw=r[key];
+    if(raw===''||raw==null||isNaN(raw)) return;
+    const v=Number(raw);
+    const rng=dmLookup(r.ComponentType, lvl, key);
+    if(!rng || rng.min==null || rng.max==null || rng.max<=0) return;
+    if(v > rng.max*HIGH)                  out.push({key, dir:'high', v, bound:rng.max});
+    else if(rng.min>0 && v < rng.min*LOW) out.push({key, dir:'low',  v, bound:rng.min});
+  });
+  return out.length ? out : null;
 }
 function syncSuspects(rows){
   const out=[];
@@ -3094,20 +3122,46 @@ function syncSuspects(rows){
 }
 let PENDING_SUSPECTS=[];   // [{row, flags}] awaiting keep/discard
 
-function mergeSharedComponents(parsed, opts){
+/* Fields the community file is authoritative for on an Observed row. InstanceId
+   is identity (never overwritten), Ownership is local truth, RowType/Payload are
+   bookkeeping. A BLANK incoming value never clears a populated local one: the
+   file is authoritative for corrections, not for erasure, and locally-enriched
+   fields (a VariationOf the user filled in, a name they cleaned up) would
+   otherwise be wiped by an older community row that simply lacked them. */
+const SYNC_KEEP_LOCAL = {RowType:1, InstanceId:1, Payload:1, Ownership:1};
+function applySyncUpdate(dest, src){
+  const changed=[];
+  CSV_COLUMNS.forEach(c=>{
+    if(SYNC_KEEP_LOCAL[c]) return;
+    const nv = src[c]==null ? '' : String(src[c]).trim();
+    if(nv==='') return;                                   // blank never overwrites
+    const ov = dest[c]==null ? '' : String(dest[c]).trim();
+    if(nv!==ov){ dest[c]=src[c]; changed.push(c); }
+  });
+  return changed;
+}
+function mergeSharedComponents(parsed){
   parsed.forEach(p=>p.Ownership='Observed');
-  // Screen before merging. `screen:false` is for re-merging rows the user has
-  // already reviewed and kept — screening those again would loop forever.
-  let held=0;
-  if(!(opts&&opts.screen===false)){
-    const sus=syncSuspects(parsed);
-    if(sus.length){
-      const flagged=new Set(sus.map(s=>s.row));
-      parsed=parsed.filter(p=>!flagged.has(p));
-      PENDING_SUSPECTS=PENDING_SUSPECTS.concat(sus);
-      held=sus.length;
-    }
-  }
+  /* CORRECTIONS FIRST, by InstanceId. The signature dedup below keys on every
+     stat, so a maintainer fixing a bad value (yaw 735.7 -> 75.7) produces a row
+     whose signature no longer matches the copy already sitting in the user's
+     dataset — it would be added as a SECOND part and the bad one would live on
+     forever, still stretching the ranges the correction was meant to repair.
+     InstanceId survives the edit, so match on it first and update in place.
+     Owned rows are never touched: if the user owns a part with this id, their
+     own measurements win over the shared file. */
+  let corrected=0;
+  const byInstance=new Map();
+  DATA.forEach(r=>{ if(r.InstanceId) byInstance.set(r.InstanceId, r); });
+  const rest=[], idMatched=new Set();
+  parsed.forEach(p=>{
+    const hit = p.InstanceId ? byInstance.get(p.InstanceId) : null;
+    if(!hit){ rest.push(p); return; }
+    idMatched.add(hit);
+    if(hit.Ownership==='Observed' && applySyncUpdate(hit,p).length) corrected++;
+    // matched by id either way — never fall through and add a duplicate
+  });
+  parsed = rest;
   const byId = new Map();   // name-independent signature -> existing row (prefer an Observed target)
   DATA.forEach(r=>{ const k=partSigNoName(r); const ex=byId.get(k);
     if(!ex || (ex.Ownership!=='Observed' && r.Ownership==='Observed')) byId.set(k,r); });
@@ -3115,20 +3169,29 @@ function mergeSharedComponents(parsed, opts){
   parsed.forEach(p=>{
     const k=partSigNoName(p); const hit=byId.get(k);
     if(hit){                                        // same observed part already present
-      if(hit.Ownership==='Observed' && hit.ComponentName!==p.ComponentName){
+      /* Don't let a collapsed duplicate rename a row the file already addressed
+         by InstanceId. The shared file legitimately holds stat-identical rows
+         logged by different players under different names; signature dedup keeps
+         one, and the loser used to overwrite the winner's name every sync — with
+         two such rows the name oscillated forever, and once id-matching landed,
+         the two paths fought each other (both counters ticking on every pull, on
+         an unchanged file). The id pass is authoritative; it already wrote every
+         field the file is the source of truth for. */
+      const authoritative = idMatched.has(hit);
+      if(!authoritative && hit.Ownership==='Observed' && hit.ComponentName!==p.ComponentName){
         hit.ComponentName=p.ComponentName; renamed++; // adopt the cleaner name in place
       } else dupes++;
       // Adopt VariationOf too — a stats-matching dupe is the SAME part, so if the
       // incoming copy carries identity data ours lacks (e.g. it was scanned after
       // the VariationOf field shipped, or backfilled community-side), pick it up
       // rather than silently re-exporting our blank forever.
-      if(!hit.VariationOf && p.VariationOf){ hit.VariationOf=p.VariationOf; filledVO++; }
+      if(!authoritative && !hit.VariationOf && p.VariationOf){ hit.VariationOf=p.VariationOf; filledVO++; }
       return;                                       // never add a duplicate
     }
     byId.set(k,p); fresh.push(p);                   // new part (also dedups within this batch)
   });
   DATA = DATA.concat(fresh);
-  return { added: fresh.length, dupes, renamed, filledVO, held };
+  return { added: fresh.length, dupes, renamed, filledVO, corrected };
 }
 
 /* ---- suspect review drawer ---- */
@@ -3147,10 +3210,10 @@ function renderSuspects(){
     : 'Nothing flagged';
   if(!PENDING_SUSPECTS.length){ body.innerHTML='<p class="src-empty">No parts are held for review.</p>'; return; }
   body.innerHTML =
-    '<p class="hint">These parts were held back because a stat reads far outside the known range for '+
-    'its type and level — usually a mistyped or misread digit. <b>A genuine record roll looks the same to '+
-    'this check</b>, so nothing is discarded without you. Keeping one merges it and lets it stretch the '+
-    'effective range as any real part would.</p>'+
+    '<p class="hint">These parts have a stat reading far outside the known range for their type and '+
+    'level — usually a mistyped or misread digit. Publishing one stretches the ranges for everyone who '+
+    'syncs. <b>A genuine record roll looks identical to this check</b>, so nothing is removed without '+
+    'you: <b>Keep</b> publishes it as-is, <b>Discard</b> deletes it from your data.</p>'+
     '<div class="sus-acts" style="margin:10px 0 14px">'+
       '<button class="btn" id="sus-keep-all">Keep all</button>'+
       '<button class="btn danger ghost" id="sus-drop-all">Discard all</button>'+
@@ -3175,26 +3238,20 @@ function renderSuspects(){
   if(ka) ka.addEventListener('click',()=>susResolve(PENDING_SUSPECTS.map((_,i)=>i),'keep'));
   if(da) da.addEventListener('click',()=>susResolve(PENDING_SUSPECTS.map((_,i)=>i),'drop'));
 }
-/* Two kinds of suspect need opposite handling, which is what `inData` marks:
-     - from a merge  (inData false) — never added, so KEEP means merge it in.
-     - from an export screen (inData true) — already in the dataset, so DISCARD
-       means delete the row, and keep is a no-op.
-   Kept merge-rows go back through mergeSharedComponents with screening off so
-   they still get the normal dedup / rename / VariationOf treatment. */
+/* Every suspect comes from screening DATA at export time, so the rows are
+   already in the dataset: KEEP is just a recorded decision (and stops the export
+   gate re-asking), DISCARD deletes the row so it can't be published. */
 function susResolve(idxs, verdict){
-  const keep=[], dropIds=new Set(); let dropped=0;
+  const drop=new Set(); let kept=0;
   idxs.forEach(i=>{
     const s=PENDING_SUSPECTS[i]; if(!s||s.verdict) return;
     s.verdict=verdict;
-    if(verdict==='keep'){ if(!s.inData) keep.push(s.row); }
-    else { dropped++; if(s.inData) dropIds.add(s.row); }
+    if(verdict==='keep') kept++; else drop.add(s.row);
   });
-  if(keep.length) mergeSharedComponents(keep,{screen:false});
-  if(dropIds.size) DATA = DATA.filter(r=>!dropIds.has(r));
-  if(keep.length||dropIds.size) recompute();
+  if(drop.size){ DATA = DATA.filter(r=>!drop.has(r)); recompute(); }
   renderSuspects();
-  toast(verdict==='keep' ? 'Kept '+idxs.filter(i=>PENDING_SUSPECTS[i]).length+' flagged part(s)'
-                         : 'Discarded '+dropped+' flagged part(s)'+(dropIds.size?' — removed from your data':''));
+  toast(verdict==='keep' ? 'Kept '+kept+' flagged part'+(kept===1?'':'s')+' — will be published as-is'
+                         : 'Discarded '+drop.size+' flagged part'+(drop.size===1?'':'s')+' — removed from your data');
 }
 function openSuspects(){ renderSuspects(); document.getElementById('sus-drawer').classList.add('open'); document.getElementById('sus-mask').classList.add('open'); }
 function closeSuspects(){ document.getElementById('sus-drawer').classList.remove('open'); document.getElementById('sus-mask').classList.remove('open'); }
@@ -3240,15 +3297,14 @@ async function communitySync(opts){
     try{ parsed=csvToComponents(text); }
     catch(err){ fail('parse error: '+err.message); return; }
     if(!parsed.length){ fail('found no components in the community file'); return; }
-    const {added,dupes,renamed,filledVO,held}=mergeSharedComponents(parsed);
+    const {added,dupes,renamed,filledVO,corrected}=mergeSharedComponents(parsed);
     recompute();
-    if(auto && !added && !renamed && !filledVO && !held) return;   // routine no-op, say nothing
+    if(auto && !added && !renamed && !filledVO && !corrected) return;   // routine no-op, say nothing
     toast(`${auto?'Auto-sync':'Community sync'}: added ${added} new`
+      +(corrected?` · updated ${corrected} corrected part${corrected>1?'s':''}`:'')
       +(renamed?` · corrected ${renamed} name${renamed>1?'s':''}`:'')
       +(filledVO?` · filled in ${filledVO} Variation Of`:'')
-      +(dupes?` · skipped ${dupes} already had`:'')
-      +(held?` · ${held} held for review`:''));
-    if(held) openSuspects();
+      +(dupes?` · skipped ${dupes} already had`:''));
   }catch(err){
     fail('failed: '+((err&&err.message)||err)+' — check your connection');
   }finally{
@@ -3269,7 +3325,6 @@ function exportCommunitySync(){
   const kept=new Set(PENDING_SUSPECTS.filter(s=>s.verdict==='keep').map(s=>s.row));
   const sus=syncSuspects(DATA).filter(s=>!kept.has(s.row));
   if(sus.length && !exportCommunitySync._confirmed){
-    sus.forEach(s=>s.inData=true);
     PENDING_SUSPECTS = PENDING_SUSPECTS.concat(sus.filter(s=>!PENDING_SUSPECTS.some(p=>p.row===s.row)));
     exportCommunitySync._confirmed = true;   // one nag; press Export again to publish as-is
     toast(`${sus.length} part${sus.length>1?'s':''} in your data look mis-entered — review before publishing (press Export for Sync again to publish anyway)`);
