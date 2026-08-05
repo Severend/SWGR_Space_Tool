@@ -1148,7 +1148,7 @@
 
     <div class="lo-droidpanel" id="lo-droidpanel">
       <h3>Droid Commands</h3>
-      <p class="dhint">Toggle the commands you intend to run; the reactor budget updates for the ones that affect it. <b>Reactor Overload</b> raises reactor generation; <b>Engine Overload</b> raises the engine's reactor drain (×1.25–10). Weapon Overload and Capacitor Overcharge are capacitor-side and aren't budgeted yet. Total data size is shown — capacity rules to be confirmed.</p>
+      <p class="dhint">Toggle the commands you intend to run; the reactor budget, ship performance and sustained fire all update. <b>Reactor Overload</b> raises reactor generation; <b>Engine Overload</b> raises the engine's reactor drain (×1.25–10); <b>Weapon Overload</b> raises damage (×1.25–3) and charges the same ×1.43–5 to both energy/shot and the reactor drain of weapons, ordnance and countermeasures; <b>Capacitor Overcharge</b> raises capacitor energy &amp; recharge (×1.25–2) and cuts the capacitor's own reactor drain (×0.8–0.5). Total data size is shown — capacity rules to be confirmed.</p>
       <div id="lo-droidfams"></div>
     </div>
 
@@ -5684,19 +5684,35 @@ function loEngineDrainMult(){
   sh.droids.forEach(id=>{ if(/engineoverload/.test(id)){ const p=FC_BY_ID[id]; if(p&&p.mods[1]>0) m=Math.max(m, 1/p.mods[1]); } });
   return m;
 }
-// Effective reactor drain of a part in a given slot (engine overload applies only
-// to the engine slot). Weapon/Capacitor effects are capacitor-side, not here.
-function loEffDrain(slType,row){ const d=loNum(row.ReactorEnergyDrain); return slType==='Engine'? d*loEngineDrainMult() : d; }
+// Which slots a Weapon Overload taxes: the drain multiplier lands on weapons,
+// ordnance and countermeasures only — nothing else on the ship pays for it.
+const WPN_OVERLOAD_SLOTS = { 'Weapon':1, 'Ordnance':1, 'Countermeasure':1 };
+// Effective reactor drain of a part in a given slot. Three commands move it, each
+// scoped to its own slots: Engine Overload (engine), Weapon Overload (weapon /
+// ordnance / countermeasure), Capacitor Overcharge (the capacitor alone).
+function loEffDrain(slType,row){
+  const d=loNum(row.ReactorEnergyDrain);
+  if(slType==='Engine') return d*loEngineDrainMult();
+  if(slType==='Capacitor') return d*loCapDrainMult();
+  if(WPN_OVERLOAD_SLOTS[slType]) return d*loWeaponEnergyMult();
+  return d;
+}
 // ---- performance multipliers from active droid commands (highest active tier
 //      per family, matching the reactor/engine-drain pattern above) ----
 // Engine Overload raises Top Speed / Pitch / Yaw / Roll (mods[2] = 1.1..1.4).
 function loEngineSpeedMult(){ let m=1; const sh=ship(); if(!sh) return 1; sh.droids.forEach(id=>{ if(/engineoverload/.test(id)){ const p=FC_BY_ID[id]; if(p) m=Math.max(m,p.mods[2]||1); } }); return m; }
 // Weapon Overload raises weapon/ordnance Damage (mods[2] = 1.25..3).
 function loWeaponDmgMult(){ let m=1; const sh=ship(); if(!sh) return 1; sh.droids.forEach(id=>{ if(/weaponoverload/.test(id)){ const p=FC_BY_ID[id]; if(p) m=Math.max(m,p.mods[2]||1); } }); return m; }
-// Weapon Overload also raises Energy/Shot (×1/mods[1] = 1.43..5). Highest tier.
+// Weapon Overload's cost factor (×1/mods[1] = 1.43 / 2 / 2.86 / 5, highest tier).
+// It scales BOTH the capacitor energy/shot AND the reactor drain of the weapon,
+// ordnance and countermeasure slots — one number, two places it's charged.
 function loWeaponEnergyMult(){ let m=1; const sh=ship(); if(!sh) return 1; sh.droids.forEach(id=>{ if(/weaponoverload/.test(id)){ const p=FC_BY_ID[id]; if(p&&p.mods[1]>0) m=Math.max(m,1/p.mods[1]); } }); return m; }
 // Weapon Capacitor Overcharge raises Capacitor Energy & Recharge (mods[1]=1.25..2).
 function loCapMult(){ let m=1; const sh=ship(); if(!sh) return 1; sh.droids.forEach(id=>{ if(/weapcappowerup/.test(id)){ const p=FC_BY_ID[id]; if(p) m=Math.max(m,p.mods[1]||1); } }); return m; }
+// The other half of the Overcharge: the CAPACITOR's own reactor drain scales by the
+// reciprocal (×1/mods[1] = 0.8 / 0.67 / 0.57 / 0.5) — a reduction, and the only drain
+// the command touches. Highest tier = smallest multiplier, so this one takes the min.
+function loCapDrainMult(){ let m=1; const sh=ship(); if(!sh) return 1; sh.droids.forEach(id=>{ if(/weapcappowerup/.test(id)){ const p=FC_BY_ID[id]; if(p&&p.mods[1]>0) m=Math.min(m,1/p.mods[1]); } }); return m; }
 function loDroidData(){ let s=0; const sh=ship(); if(!sh) return 0; sh.droids.forEach(id=>{ const p=FC_BY_ID[id]; if(p) s+=p.datasize; }); return s; }
 function loBudgets(){
   const sh=ship(); let mass=0, drain=0, gen=0;
@@ -5706,7 +5722,8 @@ function loBudgets(){
     if(sl.type==='Main Reactor') gen+=loNum(r.ReactorGenerationRate);
   });
   const mult=loReactorMult();
-  return { mass, maxmass: sh?sh.maxWeight:0, drain, gen, genEff: gen*mult, mult, engMult:loEngineDrainMult() };
+  return { mass, maxmass: sh?sh.maxWeight:0, drain, gen, genEff: gen*mult, mult,
+    engMult:loEngineDrainMult(), wpnDrainMult:loWeaponEnergyMult(), capDrainMult:loCapDrainMult() };
 }
 
 /* ---- ship performance (derived combat/mobility stats) ----
@@ -6154,14 +6171,14 @@ function renderSliders(){
       +'<input type="range" min="0" max="3" step="1" value="'+w+'" data-cat="'+c.key+'"></div>';
   }).join('');
 }
-// Overload/Overcharge families relevant to a build's energy. Reactor & Engine
-// overloads change the reactor budget; Weapon/Capacitor effects are capacitor-side.
+// Overload/Overcharge families relevant to a build's energy. All four move the
+// reactor budget, each on its own slots — see loEffDrain.
 const DROID_RELEVANT = FCPROGRAMS.filter(p=>/reactoroverload|engineoverload|weaponoverload|weapcappowerup/.test(p.id));
 function droidBudgetNote(id){
   if(/reactoroverload/.test(id)) return {on:true,  txt:'↑ reactor generation (raises budget)'};
   if(/engineoverload/.test(id))  return {on:true,  txt:'↑ engine reactor drain ×1.25–10 (uses budget)'};
-  if(/weapcappowerup/.test(id))  return {on:false, txt:'draws from reactor — not yet budgeted (awaiting formula)'};
-  if(/weaponoverload/.test(id))  return {on:false, txt:'capacitor energy/shot — not in reactor budget'};
+  if(/weapcappowerup/.test(id))  return {on:true,  txt:'↓ capacitor reactor drain ×0.8–0.5 (frees budget)'};
+  if(/weaponoverload/.test(id))  return {on:true,  txt:'↑ weapon / ordnance / CM reactor drain ×1.43–5, and energy/shot'};
   return {on:false,txt:''};
 }
 function renderDroidFams(){
@@ -6178,7 +6195,12 @@ function renderDroidFams(){
 function renderDroidSummary(){
   const el=document.getElementById('lo-droidsummary'); const sh=ship(); if(!el) return;
   const n=sh?sh.droids.length:0;
-  const bits=[]; if(loReactorMult()>1) bits.push('reactor ×'+loReactorMult()); if(loEngineDrainMult()>1) bits.push('engine drain ×'+Math.round(loEngineDrainMult()*100)/100);
+  const r2=v=>Math.round(v*100)/100;
+  const bits=[];
+  if(loReactorMult()>1) bits.push('reactor ×'+loReactorMult());
+  if(loEngineDrainMult()>1) bits.push('engine drain ×'+r2(loEngineDrainMult()));
+  if(loWeaponEnergyMult()>1) bits.push('weapon drain ×'+r2(loWeaponEnergyMult()));
+  if(loCapDrainMult()<1) bits.push('cap drain ×'+r2(loCapDrainMult()));
   el.textContent = n?(n+' droid command'+(n>1?'s':'')+' · data '+loDroidData()+(bits.length?' · '+bits.join(' · '):'')):'No droid commands selected';
 }
 
@@ -6283,7 +6305,9 @@ function initLoadout(){
     if(e.target.closest('.slotpick')) return;
     document.querySelectorAll('.slotpick.open').forEach(x=>x.classList.remove('open'));
   });
-  document.getElementById('lo-droidfams').addEventListener('click',e=>{ const b=e.target.closest('[data-droid]'); if(!b) return; const s=ship(); if(!s) return; const id=b.getAttribute('data-droid'); const i=s.droids.indexOf(id); if(i>=0) s.droids.splice(i,1); else s.droids.push(id); renderDroidFams(); renderBudgets(); renderDroidSummary(); });
+  // A command change moves drain, speed, DPS and sustained fire at once, so redraw
+  // every panel that reads a droid multiplier — not just the budget bars.
+  document.getElementById('lo-droidfams').addEventListener('click',e=>{ const b=e.target.closest('[data-droid]'); if(!b) return; const s=ship(); if(!s) return; const id=b.getAttribute('data-droid'); const i=s.droids.indexOf(id); if(i>=0) s.droids.splice(i,1); else s.droids.push(id); renderDroidFams(); renderBudgets(); renderShipStats(); renderSustain(); renderSlots(); renderDroidSummary(); });
 
   document.getElementById('lo-prefpanel').classList.add('open'); // priorities visible by default
   renderLoadout();
