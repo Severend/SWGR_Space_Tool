@@ -99,6 +99,23 @@
   .spacer{flex:1}
   .ico{width:15px;height:15px;display:inline-block}
 
+  /* Split button: two real buttons welded into one control, so an action and the
+     setting that governs it read as the same thing. Used by Community Sync + AUTO. */
+  .btn-split{display:inline-flex;align-items:stretch}
+  .btn-split>button.btn:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
+  .btn-split>button.btn.split-toggle{
+    margin-left:-1px;border-top-left-radius:0;border-bottom-left-radius:0;
+    padding:9px 11px;font-size:9.5px;letter-spacing:1.3px;color:var(--txt-dim);gap:5px;
+  }
+  .btn-split>button.btn.split-toggle:hover{z-index:1}
+  .btn-split>button.btn.split-toggle.active{
+    color:var(--cyan);border-color:var(--cyan);background:rgba(59,201,255,.10);z-index:1;
+  }
+  .btn-split>button.btn.split-toggle.active:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 1px rgba(59,201,255,.25)}
+  /* State pip — the toggle has to be readable as on/off at a glance, not by colour alone */
+  .split-toggle .asdot{width:6px;height:6px;border-radius:50%;background:var(--line2);border:1px solid var(--txt-dim);transition:.12s}
+  .split-toggle.active .asdot{background:var(--cyan);border-color:var(--cyan);box-shadow:0 0 6px rgba(59,201,255,.8)}
+
   select,input[type=text],input[type=number]{
     font-family:var(--mono);background:var(--bg);border:1px solid var(--line2);color:var(--txt);
     border-radius:6px;padding:8px 10px;font-size:12.5px;outline:none;
@@ -929,8 +946,10 @@
       <button class="btn primary" id="btn-bulk"><span class="ico">＋</span> Add Component</button>
       <button class="btn" id="btn-load"><span class="ico">▣</span> Load CSV</button>
       <button class="btn" id="btn-import"><span class="ico">⇩</span> Import Shared</button>
-      <button class="btn" id="btn-sync"><span class="ico">⟳</span> Community Sync</button>
-      <button class="chip" id="btn-autosync" title="Sync the community pool automatically: once when the page loads, and again after every Load CSV (which replaces your dataset and would otherwise discard synced parts). Turn off to sync only when you press Community Sync.">Auto</button>
+      <span class="btn-split">
+        <button class="btn" id="btn-sync"><span class="ico">⟳</span> Community Sync</button>
+        <button class="btn split-toggle" id="btn-autosync" aria-pressed="true" title="Sync the community pool automatically: once when the page loads, and again after every Load CSV (which replaces your dataset and would otherwise discard synced parts). Turn off to sync only when you press Community Sync."><span class="asdot"></span>AUTO</button>
+      </span>
       <button class="btn" id="btn-export"><span class="ico">⇧</span> Export CSV</button>
       <button class="btn" id="btn-export-sync"><span class="ico">☁</span> Export for Sync</button>
       <button class="btn" id="btn-weights"><span class="ico">⚖</span> Weighting</button>
@@ -3044,7 +3063,11 @@ function mergeSharedComponents(parsed){
    off means sync only when the button is pressed. */
 const AUTOSYNC_KEY='rogue-autosync';
 let AUTO_SYNC = (localStorage.getItem(AUTOSYNC_KEY)!=='0');   // absent = on
-function renderAutoSyncChip(){ const c=document.getElementById('btn-autosync'); if(c) c.classList.toggle('active', AUTO_SYNC); }
+function renderAutoSyncChip(){
+  const c=document.getElementById('btn-autosync'); if(!c) return;
+  c.classList.toggle('active', AUTO_SYNC);
+  c.setAttribute('aria-pressed', AUTO_SYNC?'true':'false');
+}
 function setAutoSync(on){
   AUTO_SYNC=!!on;
   try{ localStorage.setItem(AUTOSYNC_KEY, AUTO_SYNC?'1':'0'); }catch(_){}
