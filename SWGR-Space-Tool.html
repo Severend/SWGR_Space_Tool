@@ -6537,7 +6537,17 @@ function renderBudgets(){
   const pOver=b.drain>b.genEff; g('budget-power').classList.toggle('over',pOver);
   let ps; if(!b.gen) ps='No reactor equipped'; else ps=pOver?('OVER by '+loFmt(b.drain-b.genEff)):('Spare '+loFmt(b.genEff-b.drain)+'  ·  '+Math.round(pp)+'%');
   if(b.mult>1) ps+='   (Overload ×'+b.mult+')';
+  /* Over budget: say what reactor would actually fix it. The number that matters
+     is the BASE generation rate — what's printed on a reactor's tooltip and what
+     you shop for — not the overloaded figure in the bar, which is base x mult.
+     So it's drain/mult, and it must round UP: rounding to nearest can print a
+     value that still doesn't cover the draw once the multiplier is reapplied. */
+  if(pOver && b.gen) ps+='  ·  Needs '+loFmt(Math.ceil(b.drain/b.mult))+' base gen';
   g('pwr-sub').textContent=ps;
+  g('pwr-sub').title = (pOver && b.gen)
+    ? ('Reactor base generation of '+loFmt(Math.ceil(b.drain/b.mult))+' would cover this build'
+       +(b.mult>1?' once Reactor Overload ×'+b.mult+' is applied':'')+'. Yours generates '+loFmt(b.gen)+'.')
+    : '';
 }
 
 function slotStatLine(sl,r){
