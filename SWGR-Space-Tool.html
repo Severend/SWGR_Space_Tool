@@ -2337,6 +2337,10 @@ function ocrStatFlags(data){
     // values. Flag it on its own, before any range check: a 0 can't be judged
     // against a range, and it's the one misread the scanner can name exactly.
     if(v===0){ flags[key]={dir:'zero', v}; return; }
+    // A fused current/max ("/" read as a digit) lands inside every plausible
+    // range, so it must be caught by its shape before any magnitude test.
+    const fx = fusedStatRepair(raw);
+    if(fx){ flags[key]={dir:'fused', v, fix:fx.max}; return; }
     const rng = finalDmLookup(type, lvl, key) || unionCraftedRange(type,key);
     if(!rng || rng.min==null || rng.max==null || rng.max<=0) return;
     if(v > rng.max*HIGH)                  flags[key]={dir:'high', v, bound:rng.max};
@@ -2350,7 +2354,10 @@ function applyStatFlags(data){
     const el=document.getElementById('fld-'+key); if(!el) return;
     const f=flags[key], dec=STAT_DEFS[key].dec, lab=el.closest('label');
     el.classList.add('stat-suspect');
-    el.title = f.dir==='zero'
+    el.title = f.dir==='fused'
+      ? 'This looks like the tooltip\'s current/max pair fused into one number — OCR read the "/" '+
+        'as a digit, so '+f.v+' is really '+fmt(f.fix,dec)+' / '+fmt(f.fix,dec)+'. Suggested value: '+fmt(f.fix,dec)+'.'
+      : f.dir==='zero'
       ? '0 is not a possible value for this stat. The part was most likely damaged or drained '+
         'when the screenshot was taken (the tooltip shows current/max, and current had fallen to '+
         '0), or the capture omits through values. Enter the MAX value, or clear the field — a 0 '+
@@ -2360,7 +2367,9 @@ function applyStatFlags(data){
         '). Likely an OCR misread — verify against the screenshot.';
     if(lab && !lab.querySelector('.stat-suspect-note')){
       const s=document.createElement('span'); s.className='stat-suspect-note';
-      s.textContent = f.dir==='zero'
+      s.textContent = f.dir==='fused'
+        ? '⚠ current/max fused by a misread "/" — should be '+fmt(f.fix,dec)
+        : f.dir==='zero'
         ? '⚠ 0 is not possible — damaged/drained part? enter the max'
         : '⚠ far '+(f.dir==='high'?'above':'below')+' expected range — check';
       lab.appendChild(s);
@@ -2491,6 +2500,34 @@ function ocrDetectType(title,keys,raw){const T=String(title).toUpperCase();
  return'';}
 function ocrFirstNumber(str){const m=String(str).match(/-?\d+(?:[.,]\d+)?/);if(!m)return null;const n=Number(m[0].replace(',','.'));return isNaN(n)?null:n;}
 function ocrValueNum(valStr){let seg=String(valStr);if(seg.includes('/'))seg=seg.split('/').pop();return ocrFirstNumber(seg);}
+/* ---- "/" misread as a digit, fusing current/max into one number ----
+   The tooltip shows pool stats as `current/max`. When OCR reads the slash as a
+   digit (7 in every case seen so far), the two numbers fuse into one token — and
+   because JS parseFloat stops at the SECOND decimal point, what gets stored is a
+   silently plausible number rather than junk:
+
+       "419.2/419.2"  ->  OCR "419.27419.2"  ->  parseFloat 419.27419
+
+   Reproduced exactly for all four occurrences in the community file. Nothing
+   downstream can catch these: 419.27419 sits inside every sane range, so the
+   magnitude checks wave it through — only the impossible PRECISION gives it away
+   (in-game values carry at most one decimal; RefireRate and the ratio stats are
+   the exceptions and never take this shape).
+
+   The tell that makes a repair safe rather than a guess is the integer part
+   REPEATING after the separator digit. Requiring that exact repeat is what keeps
+   this from mangling a legitimate value. Returns the max side, which is what the
+   pool stats want. */
+function fusedStatRepair(v){
+  const s=String(v).trim();
+  const m=s.match(/^(\d+)\.(\d)(\d)(\d+)(?:\.(\d))?$/);
+  if(!m) return null;
+  const [,intPart,dec,sep,rest,maxDec]=m;
+  if(rest!==intPart) return null;              // integer part must repeat exactly
+  return { current:Number(intPart+'.'+dec),
+           max:Number(intPart+'.'+(maxDec!=null?maxDec:dec)),
+           sep, text:s };
+}
 // "current/max" pool stats show two values and we want the MAX (the part after the "/").
 // OCR frequently mangles the slash: as a letter (514.6f686.1 -> first number wrongly taken),
 // a space (110.6 147.4), or a digit that fuses both one-decimal numbers into one token
@@ -2506,6 +2543,8 @@ function ocrValueMax(valStr){
   }
   const fused=s.match(/(\d+\.\d)\d(\d+\.\d)/);               // slash read as a digit fused two 1-dec numbers
   if(fused) return +fused[2];                                // display is "current/max": the max is the 2nd
+  const rep=fusedStatRepair(s);                              // the "/" read as 7, max side missing its decimal
+  if(rep) return rep.max;
   const nums=(s.match(/\d+(?:\.\d+)?/g)||[]).map(Number).filter(n=>!isNaN(n));
   if(!nums.length) return null;
   // "current max" (slash lost to a space): the max is positionally the SECOND value, not the
@@ -3149,6 +3188,8 @@ function rowSuspectFlags(r){
     // ranges now, but a pool whose min is legitimately near 0 would never trip
     // the low test anyway.
     if(v===0){ out.push({key, dir:'zero', v}); return; }
+    const fx=fusedStatRepair(raw);
+    if(fx){ out.push({key, dir:'fused', v, fix:fx.max}); return; }
     const rng=dmLookup(r.ComponentType, lvl, key);
     if(!rng || rng.min==null || rng.max==null || rng.max<=0) return;
     if(v > rng.max*HIGH)                  out.push({key, dir:'high', v, bound:rng.max});
@@ -3196,7 +3237,7 @@ function susPeerValues(row, key){
 function susCorroborated(row, f){
   // Zero is impossible by domain rule, so other zeros are corroborating
   // evidence of a shared capture bug, not of a real value. Never clear one.
-  if(f.dir==='zero') return false;
+  if(f.dir==='zero' || f.dir==='fused') return false;
   const peers=susPeerValues(row, f.key);
   if(peers.length<SUS_MIN_PEERS) return false;
   const lo=Math.min.apply(null,peers), hi=Math.max.apply(null,peers);
@@ -3290,6 +3331,10 @@ function mergeSharedComponents(parsed){
 /* ---- suspect review drawer ---- */
 function susFlagLine(f){
   const def=STAT_DEFS[f.key]||{label:f.key,dec:1};
+  if(f.dir==='fused'){
+    return '<div class="sus-flag">'+escapeHtml(def.label)+' <b>'+f.v+'</b> — the tooltip\'s current/max '+
+           'pair fused into one number (a misread "/"); should be <b>'+statValueFmt(f.fix,def.dec)+'</b></div>';
+  }
   if(f.dir==='zero'){
     return '<div class="sus-flag">'+escapeHtml(def.label)+' <b>0.0</b> — not a possible value; '+
            'the part was damaged or drained when captured, or the source omits through values</div>';
