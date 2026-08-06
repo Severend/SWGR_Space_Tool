@@ -1636,11 +1636,15 @@ function launchRound(key,val){
 function defaultWeight(type,key){
   if(type==='Armor') return 1;                                 // armor & HP are the whole point here
   if(key==='Armor'||key==='Hitpoints') return 0;               // A/HP irrelevant on non-armor components
-  // Engine: Top Speed is the stat the part is chosen for. Pitch/Yaw/Roll are
-  // three stats measuring one property (agility), so at weight 1 each they'd
-  // out-vote speed 3:1; mass is a fit/RE concern rather than performance here.
-  // Discounting all four keeps speed the headline without ignoring the rest.
-  if(type==='Engine'&&(key==='Mass'||key==='PitchRateMax'||key==='YawRateMax'||key==='RollRateMax')) return 0.75;
+  // Engine: Top Speed is the stat the part is chosen for, so it alone stays at
+  // 1. Pitch/Yaw/Roll are three stats measuring one property (agility) and
+  // would out-vote speed 3:1 at full weight; drain is discounted with them.
+  // Mass sits between — a real fit/RE concern, just not a performance one.
+  // Both branches precede the global Mass/Drain rules below, which they override.
+  if(type==='Engine'){
+    if(key==='Mass') return 0.75;
+    if(key==='ReactorEnergyDrain'||key==='PitchRateMax'||key==='YawRateMax'||key==='RollRateMax') return 0.5;
+  }
   if(key==='Mass') return 1;                                   // mass is valuable everywhere (RE / fit)
   if(key==='ReactorEnergyDrain') return 0.75;
   return 1;                                                    // component-specific stats
