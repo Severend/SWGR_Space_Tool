@@ -1099,7 +1099,7 @@
     <div class="re-controls">
       <label class="field"><span>Component Type</span><select id="re-type"></select></label>
       <label class="field"><span>RE Level</span><select id="re-level"></select></label>
-      <label class="field" id="re-shipclass-wrap" style="display:none"><span>Ship Class</span><select id="re-shipclass"><option>Fighter</option><option>POV</option></select></label>
+      <label class="field" id="re-shipclass-wrap" style="display:none"><span>Ship Class</span><select id="re-shipclass"><option>Fighter</option><option>POB</option></select></label>
       <label class="lo-check"><input type="checkbox" id="re-chance10" checked> RE Chance +10</label>
       <label class="lo-check"><input type="checkbox" id="re-owned-only" checked> Owned donors only</label>
       <button class="btn" id="re-prefbtn"><span class="ico">⚖</span> Priorities</button>
@@ -1479,10 +1479,10 @@ const CSV_COLUMNS = ['RowType','InstanceId','ComponentType','ComponentName','Var
    same part (e.g. Protecto-Net Shield: "Level 8 Ship Equipment" + "Reverse
    Engineering Level: 7"). RELevel governs RE-donor pooling and Looted/REed
    grading pools; CertificationLevel governs loadout equip-gating and Crafted
-   grading pools. ShipClass (Fighter/POV) matters only at level 9/10, where
-   POV (multiplayer-ship) components have systematically different stat
+   grading pools. ShipClass (Fighter/POB) matters only at level 9/10, where
+   POB (multiplayer-ship) components have systematically different stat
    distributions and get fully separate peer pools. */
-const SHIP_CLASSES=['Fighter','POV'];
+const SHIP_CLASSES=['Fighter','POB'];
 // The level that classifies a part physically (for ShipClass applicability).
 function effectiveLevel(r){
   const re=parseInt(r.RELevel,10), ce=parseInt(r.CertificationLevel,10);
@@ -1493,11 +1493,15 @@ function effectiveLevel(r){
    copy whichever of RELevel/CertificationLevel is present into the other.
    Crafted rows never have an RE level (they were never RE'd) — blank it.
    ShipClass defaults to Fighter at level 9/10 (no datamined or OCR signal
-   distinguishes POV; the user retags manually) — except a level-10 CRAFTED
-   part, which defaults to POV, since the level-10 crafting schematics ARE the
-   POV/Gunship parts. */
+   distinguishes POB; the user retags manually) — except a level-10 CRAFTED
+   part, which defaults to POB, since the level-10 crafting schematics ARE the
+   POB/Gunship parts. */
 function applyLevelDefaults(r){
   const has=v=>v!==''&&v!==null&&v!==undefined&&String(v).trim()!=='';
+  // Legacy CSVs spell the class "POV" (a long-standing typo for POB —
+  // Player-Operated Base). Rename on the way in, or the value would fail the
+  // SHIP_CLASSES check below and silently fall back to Fighter.
+  if(String(r.ShipClass||'').trim().toUpperCase()==='POV') r.ShipClass='POB';
   if(r.Source==='Crafted'){
     if(!has(r.CertificationLevel)&&has(r.RELevel)) r.CertificationLevel=r.RELevel;
     r.RELevel='';
@@ -1516,12 +1520,12 @@ function applyLevelDefaults(r){
   const lv=effectiveLevel(r);
   if(lv===9||lv===10){
     if(!SHIP_CLASSES.includes(r.ShipClass)){
-      // Level-10 CRAFTED parts are the POV/Gunship schematics (Gunship is a
-      // SUBCLASS of POV, so the two-class model still holds). Fighter would be
+      // Level-10 CRAFTED parts are the POB/Gunship schematics (Gunship is a
+      // SUBCLASS of POB, so the two-class model still holds). Fighter would be
       // the wrong default for precisely that tier, and a mis-tagged part is
       // invisible: it just quietly joins the Fighter L10 pool and skews it.
       // An explicit ShipClass always wins — this only fills a blank.
-      r.ShipClass = (r.Source==='Crafted' && lv===10) ? 'POV' : 'Fighter';
+      r.ShipClass = (r.Source==='Crafted' && lv===10) ? 'POB' : 'Fighter';
     }
   }
   else r.ShipClass='';
@@ -1632,6 +1636,11 @@ function launchRound(key,val){
 function defaultWeight(type,key){
   if(type==='Armor') return 1;                                 // armor & HP are the whole point here
   if(key==='Armor'||key==='Hitpoints') return 0;               // A/HP irrelevant on non-armor components
+  // Engine: Top Speed is the stat the part is chosen for. Pitch/Yaw/Roll are
+  // three stats measuring one property (agility), so at weight 1 each they'd
+  // out-vote speed 3:1; mass is a fit/RE concern rather than performance here.
+  // Discounting all four keeps speed the headline without ignoring the rest.
+  if(type==='Engine'&&(key==='Mass'||key==='PitchRateMax'||key==='YawRateMax'||key==='RollRateMax')) return 0.75;
   if(key==='Mass') return 1;                                   // mass is valuable everywhere (RE / fit)
   if(key==='ReactorEnergyDrain') return 0.75;
   return 1;                                                    // component-specific stats
@@ -1663,7 +1672,7 @@ function displayLevel(r){
   const c = (raw===undefined||raw===null)?'':String(raw).trim();
   return c===''?'(no cert)':c;
 }
-/* Ship Class is only a grading dimension at level 9/10 (Fighter vs POV pools
+/* Ship Class is only a grading dimension at level 9/10 (Fighter vs POB pools
    have systematically different stat distributions). Below that it's ''. */
 function shipClassOf(r){
   const lv = effectiveLevel(r);
@@ -1686,7 +1695,7 @@ function pairLabel(lvl){ const p=pairedLevels(lvl); return p?(p[0]+'–'+p[1]):S
    REed are pooled together: both are "final" production paths (neither is a
    raw drop), so pooling them is what lets a level-4 Crafted booster and a
    level-4 REed booster be compared head-to-head. At level 9/10 the pool
-   additionally splits by Ship Class (Fighter/POV). With Combine Paired
+   additionally splits by Ship Class (Fighter/POB). With Combine Paired
    Levels on, paired levels merge within each pool — never across source
    class or ship class. */
 function peerKey(r){
@@ -1702,7 +1711,7 @@ function scoreDataset(rows, applyRounding){
   rows.forEach((r,i)=>{ (groups[peerKey(r)] ||= []).push(i); });
 
   // observed min/max + count per (peer group, stat) — the fallback range for
-  // pools with no datamined seed (e.g. POV, Droid Interface)
+  // pools with no datamined seed (e.g. POB, Droid Interface)
   const statModel = {}; // groupKey -> stat -> {n, mn, mx}
   for(const gk in groups){
     const type = rows[groups[gk][0]].ComponentType; // type is constant within a group
@@ -1750,7 +1759,7 @@ function scoreDataset(rows, applyRounding){
       // the same level, share that same effective range projected through the
       // level's max achievable RE bonus (see finalDmLookup), so a strong REed
       // stat doesn't auto-pin at 100% just for clearing the looted max — and
-      // a level-4 part is never compared to a level-10 one. POV pools get no
+      // a level-4 part is never compared to a level-10 one. POB pools get no
       // seed at all (no datamined data) and fall back to the observed span.
       const dmv = isLooted ? effectiveDMRange(type, displayLevel(r), key, rOpts) : finalDmLookup(type, displayLevel(r), key, rOpts);
       const gRange = dmv || (model[key] && model[key].mn!=null ? {min:model[key].mn, max:model[key].mx} : null);
@@ -1988,7 +1997,7 @@ function renderTable(){
     const checked = selectedIds.has(r.InstanceId) ? ' checked' : '';
     const dl = displayLevel(r);
     const lvlTxt = dl==='(no cert)' ? '—' : dl;
-    const scTag = shipClassOf(r)==='POV' ? ` <span class="pill obs" title="POV (multiplayer-ship) class — graded in its own pool">POV</span>` : '';
+    const scTag = shipClassOf(r)==='POB' ? ` <span class="pill obs" title="POB (multiplayer-ship) class — graded in its own pool">POB</span>` : '';
     // RE/Cert mismatch: stats or the "Variation Of:" name imply a different RE
     // level than the one recorded (see reLevelMismatch).
     const mm = s.reMismatch;
@@ -2162,7 +2171,7 @@ function openDrawer(i){
     }
     const rp = st.rangePct;
     // Range numbers shown under the grade (the exact span the grade is measured
-    // against — effective range, or the observed pool span for POV/no-seed).
+    // against — effective range, or the observed pool span for POB/no-seed).
     const rMin=st.rMin, rMax=st.rMax, haveRange = rMin!=null && rMax!=null;
     const rangeTxt = haveRange
       ? (def.better==='low' ? `${fmt(rMax,def.dec)}–${fmt(rMin,def.dec)}` : `${fmt(rMin,def.dec)}–${fmt(rMax,def.dec)}`)
@@ -2257,7 +2266,7 @@ function buildForm(type, data){
   const curSC = data? String(v('ShipClass')||'') : '';
   const curName = data? v('ComponentName') : '';
   const lvlOpts = function(cur){ return '<option value="">—</option>'+[1,2,3,4,5,6,7,8,9,10].map(function(n){return '<option '+(String(n)===cur?'selected':'')+'>'+n+'</option>';}).join(''); };
-  // Ship Class applies to ANY source at effective level 9/10 — POV-sized is a
+  // Ship Class applies to ANY source at effective level 9/10 — POB-sized is a
   // physical property of the component, not a drop-only concept.
   const effLvl = parseInt(isCrafted?curCert:(curRe||curCert),10);
   const showSC = (effLvl===9||effLvl===10);
@@ -2335,7 +2344,7 @@ function ocrStatFlags(data){
   const flags={};
   if(!data) return flags;
   const type=data.ComponentType; if(!type||!COMPONENT_TYPES[type]) return flags;
-  if(String(data.ShipClass||'')==='POV') return flags; // POV magnitudes differ; no fighter range applies
+  if(String(data.ShipClass||'')==='POB') return flags; // POB magnitudes differ; no fighter range applies
   const lvl = data.CertificationLevel || data.RELevel || '';
   const HIGH=2.5, LOW=0.5;
   statsForType(type).forEach(key=>{
@@ -3186,7 +3195,7 @@ const COMMUNITY_SYNC_URL = 'https://raw.githubusercontent.com/Severend/SWGR_Spac
    with no datamined row are skipped rather than guessed at. */
 function rowSuspectFlags(r){
   if(!r || !r.ComponentType || !COMPONENT_TYPES[r.ComponentType]) return null;
-  if(String(r.ShipClass||'')==='POV') return null;      // POV magnitudes differ; no fighter range applies
+  if(String(r.ShipClass||'')==='POB') return null;      // POB magnitudes differ; no fighter range applies
   const lvl = r.CertificationLevel || r.RELevel || '';
   const HIGH=2.5, LOW=0.5;
   const out=[];
@@ -3955,7 +3964,7 @@ function tokenRarity(s){
    stats independent within a part (bounded only by the brand range), enemy drop
    rates from SOURCES. Decisions: single RE level; identical SOURCES enemy names
    are summed into one line but distinct names ("Dagger" vs "Daggers") stay
-   separate (real minor spawn variances); no datamined seed → no sources (POV /
+   separate (real minor spawn variances); no datamined seed → no sources (POB /
    craft-only pools). */
 // P(one roll of THIS brand's `key` stat lands ≥ as good as `value`) — the
 // per-brand term inside kashStatOdds, exposed for the multi-stat combo.
@@ -4134,7 +4143,7 @@ function renderPartListDrawer(type, lvl){
 function renderSourceDrawer(type, lvl, preselect){
   type=canonType(type); lvl=Number(lvl)||1;
   // Targetable = has a looted range at this level (a datamined/back-inferred
-  // seed). No seed → nothing drops to hunt (POV / craft-only) → not targetable.
+  // seed). No seed → nothing drops to hunt (POB / craft-only) → not targetable.
   const tgts=[];
   statsForType(type).forEach(k=>{ const eff=effectiveDMRange(type,lvl,k,{}); if(eff) tgts.push({key:k, def:STAT_DEFS[k], eff:eff}); });
   srcDrawer={type, lvl, tgts};
@@ -4154,7 +4163,7 @@ function renderSourceDrawer(type, lvl, preselect){
   }
   let body;
   if(!tgts.length){
-    body='<p class="src-empty" style="margin-top:4px">No looted drop data for <b>'+escapeHtml(type)+'</b> at RE Level '+lvl+' — this pool is POV / craft-only. Pick another type or level above.</p>';
+    body='<p class="src-empty" style="margin-top:4px">No looted drop data for <b>'+escapeHtml(type)+'</b> at RE Level '+lvl+' — this pool is POB / craft-only. Pick another type or level above.</p>';
   } else {
     let rows='';   // preselect toggles the given stat(s) on at their target value(s)
     tgts.forEach(t=>{
@@ -5438,9 +5447,9 @@ function isHighValue(r){
    freaks can legitimately exceed them), then stretched whenever one of your
    logged Looted parts falls outside it. Accepted tradeoff: sample-selection
    bias (players log good drops disproportionately) can drift the top end.
-   POV pools return null in every code path — no datamined data exists for
-   POV from any source, and its stat distributions are systematically
-   different, so they build purely from observed POV parts. */
+   POB pools return null in every code path — no datamined data exists for
+   POB from any source, and its stat distributions are systematically
+   different, so they build purely from observed POB parts. */
 let _effRangeCache = {};
 /* The LOOTED effective range for a pool (type / level(s) / ship class). Built
    by folding together every value that legitimately tells us how high (or low)
@@ -5453,13 +5462,13 @@ let _effRangeCache = {};
    must have existed — it stretches the Looted range even though the REed part
    itself lives in the Finished pool. Crafted parts are deliberately NOT folded
    in: they're built from materials, not RE'd from a drop, so they "can't be
-   used to calculate other values." POV pools get no datamined seed AND no
+   used to calculate other values." POB pools get no datamined seed AND no
    cross-source inference — they build purely from their own observed parts via
    the scoreDataset fallback (returns null here). */
 function effectiveDMRange(type, lvl, key, opts){
   opts=opts||{};
   const shipClass = opts.shipClass||'';
-  if(shipClass==='POV') return null;
+  if(shipClass==='POB') return null;
   const combine = !!opts.combinePaired;
   const ck = type+'\x01'+lvl+'\x01'+key+'\x01'+(combine?1:0)+'\x01'+shipClass;
   if(ck in _effRangeCache) return _effRangeCache[ck];
@@ -5527,7 +5536,7 @@ function finalDmLookup(type, lvl, key, opts){
   const ck = type+'\x01'+L+'\x01'+key+'\x01'+(opts.combinePaired?1:0)+'\x01'+(opts.shipClass||'');
   if(ck in _finalDmCache) return _finalDmCache[ck];
   // Seed from the live effective range (per the row's actual Ship Class — a
-  // POV part gets no seed here either), so Crafted/REed grading follows the
+  // POB part gets no seed here either), so Crafted/REed grading follows the
   // same stretched range as Looted grading.
   const anchors = effectiveDMRange(type, L, key, opts);
   const def = STAT_DEFS[key];
@@ -5554,8 +5563,8 @@ function finalDmLookup(type, lvl, key, opts){
   // seed the shared finished range with the crafted DEFAULTS too, so Crafted/REed
   // grading has a sensible ceiling even before any finished parts are logged.
   // Crafted values are already a production endpoint — folded raw (capped), not
-  // RE-projected. POV pools get no crafted defaults.
-  if(shipClass!=='POV') lvls.forEach(l=>{ const s=craftedDefLookup(type,l,key); if(s){ ['min','max'].forEach(a=>{ let v=s[a]; if(cap!=null) v=dir===1?Math.min(v,cap):Math.max(v,cap); fold(v); }); } });
+  // RE-projected. POB pools get no crafted defaults.
+  if(shipClass!=='POB') lvls.forEach(l=>{ const s=craftedDefLookup(type,l,key); if(s){ ['min','max'].forEach(a=>{ let v=s[a]; if(cap!=null) v=dir===1?Math.min(v,cap):Math.max(v,cap); fold(v); }); } });
   DATA.forEach(r=>{
     if(r.ComponentType!==type) return;
     if(r.Source!=='Crafted' && r.Source!=='REed') return;
@@ -5590,8 +5599,8 @@ function craftedDefLookup(type, lvl, key){
    The CRAFTED reference range for a pool: the crafted DEFAULT seed for that
    type/level, stretched by your observed Crafted parts (a freak craft past the
    sampled ceiling becomes the new top, same as a good drop stretches Looted).
-   Crafted parts group by Cert level; POV pools get no default seed and build
-   purely from observed POV Crafted parts. Used by the Stat Overview display. */
+   Crafted parts group by Cert level; POB pools get no default seed and build
+   purely from observed POB Crafted parts. Used by the Stat Overview display. */
 let _craftedRangeCache={};
 function craftedRange(type, lvl, key, opts){
   opts=opts||{};
@@ -5603,7 +5612,7 @@ function craftedRange(type, lvl, key, opts){
   const lvls=pair?pair.map(String):[String(lvl).trim()];
   let lo=Infinity,hi=-Infinity;
   const fold=v=>{ if(v!=null && !isNaN(v)){ if(v<lo)lo=v; if(v>hi)hi=v; } };
-  if(shipClass!=='POV') lvls.forEach(l=>{ const s=craftedDefLookup(type,l,key); if(s){ fold(s.min); fold(s.max); } });
+  if(shipClass!=='POB') lvls.forEach(l=>{ const s=craftedDefLookup(type,l,key); if(s){ fold(s.min); fold(s.max); } });
   DATA.forEach(r=>{
     if(r.ComponentType!==type) return;
     if(r.Source!=='Crafted') return;
@@ -5698,7 +5707,7 @@ function renderOverview(){
     statsForType(t).forEach(function(k){ const val=r[k]; if(val!==''&&val!=null&&!isNaN(val)){ if(!bySrc[k]) bySrc[k]={}; (bySrc[k][src]||(bySrc[k][src]=[])).push(Number(val)); } });
   });
   // observed values for a stat across levels, restricted to a set of Sources —
-  // the fallback range where a pool has no datamined seed (POV / no-DM types).
+  // the fallback range where a pool has no datamined seed (POB / no-DM types).
   const obsVals=function(type,lvls,sc,key,sources){
     let out=[];
     lvls.forEach(function(l){
@@ -5716,10 +5725,10 @@ function renderOverview(){
     if(!levels.length) return;
     const keys=statsForType(type);
     let totalParts=0; levels.forEach(function(l){ totalParts+=partsAt(type,l).length; });
-    const povExists = DATA.some(function(r){ return r.ComponentType===type && shipClassOf(r)==='POV'; });
+    const povExists = DATA.some(function(r){ return r.ComponentType===type && shipClassOf(r)==='POB'; });
 
     // Column list: single levels, or paired columns when Combine Paired Tiers
-    // is on; levels 9/10 split into Fighter/POV sub-columns once POV rows
+    // is on; levels 9/10 split into Fighter/POB sub-columns once POB rows
     // exist for this type (Fighter shown unlabeled until then).
     let cols=[];
     if(ovCombinePaired){
@@ -5738,7 +5747,7 @@ function renderOverview(){
       const has910 = c.lvls.some(function(l){ return l===9||l===10; });
       if(has910 && povExists){
         split.push({lvls:c.lvls, label:c.label+' · Fighter', shipClass:'Fighter'});
-        split.push({lvls:c.lvls, label:c.label+' · POV', shipClass:'POV', pov:true});
+        split.push({lvls:c.lvls, label:c.label+' · POB', shipClass:'POB', pov:true});
       } else {
         split.push({lvls:c.lvls, label:c.label, shipClass:has910?'Fighter':''});
       }
@@ -5793,7 +5802,7 @@ function renderOverview(){
     const headCells=cols.map(function(col){
       const n=col.lvls.reduce(function(s,l){ return s+partsAt(type,l).length; },0);
       if(col.pov){
-        return '<th title="POV (multiplayer-ship) pool — no datamined seed; built from your observed POV parts"><span class="ov-th-btn">'+col.label+'<span class="ov-th-n">observed only</span></span></th>';
+        return '<th title="POB (multiplayer-ship) pool — no datamined seed; built from your observed POB parts"><span class="ov-th-btn">'+col.label+'<span class="ov-th-n">observed only</span></span></th>';
       }
       return '<th class="ov-th-click" data-type="'+escapeHtml(type)+'" data-lvl="'+col.lvls[0]+'" title="Click for the full level breakdown"><span class="ov-th-btn">'+col.label+'<span class="ov-th-n">'+n+' parts</span><span class="ov-th-go">▤ details</span></span></th>';
     }).join('');
@@ -5816,9 +5825,9 @@ function renderGuide(){
     ['Excellent','85%+ Bo','band-excellent'],['Exceptional','95%+ Bo','band-exceptional'],['Elite','99%+ Bo','band-elite']];
   document.getElementById('guide-content').innerHTML = `
     <h2>How scoring works</h2>
-    <p>Every part is graded only against its <b>peer pool</b> in your dataset: <b>same component type, same level, and (at level 9/10) same Ship Class</b> — an RE-5 reactor is never compared against an RE-10 reactor, and a Fighter part is never compared against a POV (multiplayer-ship) part, whose stat distributions are systematically different. <b>RE Level and Certification Level are two separate fields</b> — the same looted part can be, say, RE Level 7 but Certification Level 8. The <b>Level by</b> toggle (shared between this tab and Stat Overview) picks which one drives the table's Level column and the peer pools; Crafted parts always group by Certification Level, since they were never RE'd and have no RE Level at all. The RE tab, by contrast, <i>always</i> pools donors by true RE Level — that's a game rule, not a display preference. Within a level, <b>Crafted</b> and <b>REed</b> parts are pooled together — both are "final" production paths rather than raw loot, so a level-4 Crafted booster is judged against level-4 REed boosters, which is what lets you answer "should I craft or RE this?" <b>Looted</b> parts stay in their own pool per level, since their reference range differs (see below). For each stat the tool:</p>
+    <p>Every part is graded only against its <b>peer pool</b> in your dataset: <b>same component type, same level, and (at level 9/10) same Ship Class</b> — an RE-5 reactor is never compared against an RE-10 reactor, and a Fighter part is never compared against a POB (multiplayer-ship) part, whose stat distributions are systematically different. <b>RE Level and Certification Level are two separate fields</b> — the same looted part can be, say, RE Level 7 but Certification Level 8. The <b>Level by</b> toggle (shared between this tab and Stat Overview) picks which one drives the table's Level column and the peer pools; Crafted parts always group by Certification Level, since they were never RE'd and have no RE Level at all. The RE tab, by contrast, <i>always</i> pools donors by true RE Level — that's a game rule, not a display preference. Within a level, <b>Crafted</b> and <b>REed</b> parts are pooled together — both are "final" production paths rather than raw loot, so a level-4 Crafted booster is judged against level-4 REed boosters, which is what lets you answer "should I craft or RE this?" <b>Looted</b> parts stay in their own pool per level, since their reference range differs (see below). For each stat the tool:</p>
     <table class="mini"><tr><th>Step</th><th>What happens</th></tr>
-      <tr><td>1 · Effective range</td><td>Each stat has one reference range for its pool (see below) — the datamined min/max as a starting point, stretched to cover your observed parts. <b>Crafted/REed</b> parts use that range <i>projected</i> through the level's maximum achievable RE bonus (+10 RE Chance); POV pools use the observed span of your own POV parts.</td></tr>
+      <tr><td>1 · Effective range</td><td>Each stat has one reference range for its pool (see below) — the datamined min/max as a starting point, stretched to cover your observed parts. <b>Crafted/REed</b> parts use that range <i>projected</i> through the level's maximum achievable RE bonus (+10 RE Chance); POB pools use the observed span of your own POB parts.</td></tr>
       <tr><td>2 · Bo% (Best-of %)</td><td>The grade is simply where the value sits in that range. Higher-is-better: <code>(value − min) / (max − min)</code>. Lower-is-better (Mass, Drain, Refire, etc.): <code>(max − value) / (max − min)</code>. The best value in the range reads <b>100%</b>, the worst <b>0%</b>.</td></tr>
       <tr><td>3 · Band</td><td>The Bo% maps to a quality band by fixed thresholds (below) — the one colour scale used everywhere in the tool.</td></tr>
     </table>
@@ -5832,7 +5841,7 @@ function renderGuide(){
     <h2>The effective range (live stretching)</h2>
     <p>Each peer pool has <b>one reference range</b> — not separate "datamined" and "observed" ones. It starts as the datamined range for that type &amp; level and stretches to cover any part you log beyond it. The datamined values come from loot data, so a freak roll past the datamined max doesn't break the scale — it <i>becomes</i> the new ceiling. (Caveat: players log good drops disproportionately, so the top end can drift upward over time — an accepted tradeoff. Thin pools also read optimistic: with one part logged, that part <i>is</i> the range.)</p>
     <p><b>Looted and Finished use separate — but related — ranges.</b> A <b>Looted</b> part is raw loot: its range is the datamined seed, stretched by your observed looted rolls. A <b>Finished</b> part (Crafted or REed) is graded against that looted range <i>projected up through the level's maximum RE bonus</i> (7% at level 10) — its own, higher ceiling. Grading them separately is what keeps a top looted LVL 10 roll able to reach <b>Elite</b>: if it were measured against the bonus-inflated finished ceiling, the RE headroom would drag every un-RE'd part down. The two ranges still inform each other: a good <b>Looted</b> drop raises what a Finished part could become (it lifts the projected finished ceiling), and a strong <b>REed</b> stat reveals a real donor value — REed ÷ (1 + bonus) — that stretches the <b>Looted</b> range in turn. A <b>Crafted</b> part is built from materials, not RE'd from a drop, so it stretches only its own finished range and never the looted one. A freak Crafted or REed roll past the projected finished ceiling stretches the finished range, just like a good drop stretches the looted one.</p>
-    <p><b>Fighter vs POV</b>: at level 9/10, POV (multiplayer-ship) components form fully separate pools with <b>no datamined seed at all</b> — no datamined POV data exists from any source, and its stat distributions (mass especially) are systematically different — so POV ranges build purely from your own observed POV parts (and skip the cross-source inference above).</p>
+    <p><b>Fighter vs POB</b>: at level 9/10, POB (multiplayer-ship) components form fully separate pools with <b>no datamined seed at all</b> — no datamined POB data exists from any source, and its stat distributions (mass especially) are systematically different — so POB ranges build purely from your own observed POB parts (and skip the cross-source inference above).</p>
 
     <h2>Paired Levels</h2>
     <p>An optional per-tab toggle that merges levels by certification skill box — 1 · 2/3 · 4/5 · 6/7 · 8 · 9/10 — into one pool each: the range endpoints are unioned. Levels 1 and 8 are their own cert boxes, so they never merge. Useful while your per-level pools are thin. Pools never merge across Source or Ship Class — Looted-Fighter-9/10 and Crafted-9/10 stay separate even when both are paired.</p>
@@ -5847,7 +5856,7 @@ function renderGuide(){
     <h2>CSV schema</h2>
     <p>One component per row. Columns (extra columns are ignored; missing stat columns are treated as blank):</p>
     <table class="mini"><tr><th>Group</th><th>Columns</th></tr>
-      <tr><td>Identity</td><td><code>ComponentType</code>, <code>ComponentName</code>, <code>RELevel</code> (blank for Crafted), <code>CertificationLevel</code>, <code>ShipClass</code> (Fighter/POV, only meaningful at level 9/10), <code>Source</code> (Crafted/Looted/REed — legacy "Dropped" imports as Looted), <code>Ownership</code> (Owned/Observed). Legacy CSVs with a single <code>CertificationLevel</code> column still import — the value is copied into <code>RELevel</code> for Looted/REed rows, and <code>ShipClass</code> defaults to Fighter at level 9/10.</td></tr>
+      <tr><td>Identity</td><td><code>ComponentType</code>, <code>ComponentName</code>, <code>RELevel</code> (blank for Crafted), <code>CertificationLevel</code>, <code>ShipClass</code> (Fighter/POB, only meaningful at level 9/10), <code>Source</code> (Crafted/Looted/REed — legacy "Dropped" imports as Looted), <code>Ownership</code> (Owned/Observed). Legacy CSVs with a single <code>CertificationLevel</code> column still import — the value is copied into <code>RELevel</code> for Looted/REed rows, and <code>ShipClass</code> defaults to Fighter at level 9/10.</td></tr>
       <tr><td>General</td><td><code>Armor</code>, <code>Hitpoints</code>, <code>Mass</code>, <code>ReactorEnergyDrain</code> <span style="color:var(--txt-dim)">(drain omitted for Reactors &amp; Armor plates)</span></td></tr>
       <tr><td>Specific</td><td>Reactor: <code>ReactorGenerationRate</code> · Engine: <code>PitchRateMax YawRateMax RollRateMax EngineTopSpeed</code> · Shield: <code>FrontShieldHP BackShieldHP ShieldRechargeRate</code> · Capacitor: <code>CapacitorEnergy CapacitorRechargeRate</code> · Booster: <code>BoosterEnergy BoosterRechargeRate BoosterEnergyConsumption BoosterAcceleration TopBoosterSpeed</code> · Droid: <code>DroidCommandSpeed</code> · Weapon: <code>DamageMin DamageMax VsShields VsArmor EnergyPerShot RefireRate</code></td></tr>
     </table>
@@ -7199,7 +7208,7 @@ function reCurrentShipClass(){
   const level=reCurrentLevel();
   if(level!==9&&level!==10) return '';
   const el=document.getElementById('re-shipclass');
-  return (el&&el.value==='POV')?'POV':'Fighter';
+  return (el&&el.value==='POB')?'POB':'Fighter';
 }
 
 function renderReverse(){
@@ -7217,7 +7226,7 @@ function renderReverse(){
   const bonus=reBonusPercent(level,chance10);
   document.getElementById('re-bonus-tag').textContent =
     'Bonus +'+bonus+'% / −'+bonus+'%'+(chance10?'':' (no +10 RE Chance)');
-  // Ship Class selector only matters at RE level 9/10 (POV pools are separate).
+  // Ship Class selector only matters at RE level 9/10 (POB pools are separate).
   const scWrap=document.getElementById('re-shipclass-wrap');
   if(scWrap) scWrap.style.display=(level===9||level===10)?'':'none';
   const shipClass=reCurrentShipClass();
@@ -7228,7 +7237,7 @@ function renderReverse(){
   // chosen RE level, so the donor pool is further filtered to that level —
   // ALWAYS the true RELevel field, never the RE/Cert view-toggle (donor
   // eligibility is a hard game rule, not a display preference) — and, at
-  // level 9/10, to the same Ship Class (Fighter/POV can't merge).
+  // level 9/10, to the same Ship Class (Fighter/POB can't merge).
   const pool = rePool(type, level, shipClass, rePrefs.ownedOnly);
   // drop selections/locks that no longer belong to this type/level/class pool
   const eligIds = new Set(DATA.filter(r=>reBaseEligible(r,type,level,shipClass)).map(r=>r.InstanceId));
@@ -7265,7 +7274,7 @@ function renderReverse(){
         '<div class="rd-head"><input type="checkbox" data-id="'+r.InstanceId+'"'+(checked?' checked':'')+'>'+
         '<span class="rdn">'+escapeHtml(r.ComponentName||'(unnamed)')+(isKuat(r)?' <span class="rdl">Kuat</span>':'')+'</span>'+
         tagHtml+
-        '<span class="rdl">RE'+escapeHtml(String(r.RELevel))+(shipClassOf(r)==='POV'?' · POV':'')+'</span>'+
+        '<span class="rdl">RE'+escapeHtml(String(r.RELevel))+(shipClassOf(r)==='POB'?' · POB':'')+'</span>'+
         primaryBtn+
         '<button type="button" class="rd-lock" data-lock="'+r.InstanceId+'" title="Lock this donor so Suggest keeps it">'+(locked?'🔒 Locked':'Lock')+'</button>'+
         '<button type="button" class="rd-reject" data-reject="'+r.InstanceId+'" title="Reject this donor so Suggest never picks it">'+(rejected?'🚫 Rejected':'Reject')+'</button></div>'+
@@ -7486,7 +7495,7 @@ function reFindResults(){
   const goalIdx=Number(rePrefs.findGoal);
   const out=[];
   for(let level=10; level>=1; level--){
-    const classes = (level===9||level===10) ? ['Fighter','POV'] : [''];
+    const classes = (level===9||level===10) ? ['Fighter','POB'] : [''];
     const hits=[];
     TYPE_LIST.forEach(type=>{
       classes.forEach(shipClass=>{
@@ -7558,7 +7567,7 @@ function reLoadFromFind(type, level, shipClass){
   reSelected.clear(); reLocked.clear(); reRejected.clear(); reSuggestTags={};
   renderREPriorities();
   const scEl=document.getElementById('re-shipclass');
-  if(scEl && (level===9||level===10)) scEl.value=(shipClass==='POV'?'POV':'Fighter');
+  if(scEl && (level===9||level===10)) scEl.value=(shipClass==='POB'?'POB':'Fighter');
   renderReverse();      // rebuild the donor pool for the new type/level/class
   reSuggest();          // auto-select the suggested donors (calls renderReverse)
   closeFindDrawer();
