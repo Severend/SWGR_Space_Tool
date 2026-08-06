@@ -1493,7 +1493,9 @@ function effectiveLevel(r){
    copy whichever of RELevel/CertificationLevel is present into the other.
    Crafted rows never have an RE level (they were never RE'd) — blank it.
    ShipClass defaults to Fighter at level 9/10 (no datamined or OCR signal
-   distinguishes POV; the user retags manually). */
+   distinguishes POV; the user retags manually) — except a level-10 CRAFTED
+   part, which defaults to POV, since the level-10 crafting schematics ARE the
+   POV/Gunship parts. */
 function applyLevelDefaults(r){
   const has=v=>v!==''&&v!==null&&v!==undefined&&String(v).trim()!=='';
   if(r.Source==='Crafted'){
@@ -1512,7 +1514,16 @@ function applyLevelDefaults(r){
     else if(!has(r.CertificationLevel)&&has(r.RELevel)) r.CertificationLevel=r.RELevel;
   }
   const lv=effectiveLevel(r);
-  if(lv===9||lv===10){ if(!SHIP_CLASSES.includes(r.ShipClass)) r.ShipClass='Fighter'; }
+  if(lv===9||lv===10){
+    if(!SHIP_CLASSES.includes(r.ShipClass)){
+      // Level-10 CRAFTED parts are the POV/Gunship schematics (Gunship is a
+      // SUBCLASS of POV, so the two-class model still holds). Fighter would be
+      // the wrong default for precisely that tier, and a mis-tagged part is
+      // invisible: it just quietly joins the Fighter L10 pool and skews it.
+      // An explicit ShipClass always wins — this only fills a blank.
+      r.ShipClass = (r.Source==='Crafted' && lv===10) ? 'POV' : 'Fighter';
+    }
+  }
   else r.ShipClass='';
   return r;
 }
