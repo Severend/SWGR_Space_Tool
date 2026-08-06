@@ -6541,12 +6541,21 @@ function renderBudgets(){
      is the BASE generation rate — what's printed on a reactor's tooltip and what
      you shop for — not the overloaded figure in the bar, which is base x mult.
      So it's drain/mult, and it must round UP: rounding to nearest can print a
-     value that still doesn't cover the draw once the multiplier is reapplied. */
-  if(pOver && b.gen) ps+='  ·  Needs '+loFmt(Math.ceil(b.drain/b.mult))+' base gen';
+     value that still doesn't cover the draw once the multiplier is reapplied.
+
+     Shown with the reactor slot EMPTY too, which is the case it most earns its
+     keep: leaving the slot open to read off spare mass is a normal way to shop,
+     and this turns that into a full spec — mass left AND generation required.
+     No reactor means genEff 0, so pOver is already true for any non-zero draw
+     and needs no separate test; an empty build (draw 0) correctly says nothing.
+     b.mult is >=1 from loReactorMult, so the division is always safe. */
+  const needGen = pOver ? Math.ceil(b.drain/b.mult) : 0;
+  if(pOver) ps+='  ·  Needs '+loFmt(needGen)+' base gen';
   g('pwr-sub').textContent=ps;
-  g('pwr-sub').title = (pOver && b.gen)
-    ? ('Reactor base generation of '+loFmt(Math.ceil(b.drain/b.mult))+' would cover this build'
-       +(b.mult>1?' once Reactor Overload ×'+b.mult+' is applied':'')+'. Yours generates '+loFmt(b.gen)+'.')
+  g('pwr-sub').title = pOver
+    ? ('Reactor base generation of '+loFmt(needGen)+' would cover this build'
+       +(b.mult>1?' once Reactor Overload ×'+b.mult+' is applied':'')+'. '
+       +(b.gen?('Yours generates '+loFmt(b.gen)+'.'):'No reactor fitted.'))
     : '';
 }
 
