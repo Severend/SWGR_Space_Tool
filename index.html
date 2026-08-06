@@ -3190,7 +3190,21 @@ function rowSuspectFlags(r){
     if(v===0){ out.push({key, dir:'zero', v}); return; }
     const fx=fusedStatRepair(raw);
     if(fx){ out.push({key, dir:'fused', v, fix:fx.max}); return; }
-    const rng=dmLookup(r.ComponentType, lvl, key);
+    /* Judge a part against its OWN population. The datamined table is
+       drop-sourced, so measuring a crafted part against it is measuring the
+       wrong thing — it produced every crafted false positive on the live file
+       (light crafted reactors, capped Borstel Energy/Shot). CRAFTED_DEFAULTS is
+       a static, observation-independent baseline sampled from the best crafted
+       parts on the server, so it's the right yardstick for Crafted rows and, like
+       the datamined table, cannot be moved by the row under test.
+       REed keeps the looted table: a REed part is a looted donor plus the RE
+       bonus, which the 2.5x headroom already covers.
+       Where the crafted baseline has no entry there is nothing to judge against,
+       so the stat is SKIPPED rather than guessed at — those gaps are catalogued
+       in the vault (RF-01) to be filled by hunting the parts down. */
+    const rng = r.Source==='Crafted'
+      ? craftedDefLookup(r.ComponentType, lvl, key)
+      : dmLookup(r.ComponentType, lvl, key);
     if(!rng || rng.min==null || rng.max==null || rng.max<=0) return;
     if(v > rng.max*HIGH)                  out.push({key, dir:'high', v, bound:rng.max});
     else if(rng.min>0 && v < rng.min*LOW) out.push({key, dir:'low',  v, bound:rng.min});
