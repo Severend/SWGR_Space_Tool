@@ -497,3 +497,5 @@ Part,pmwk2eng03,Engine,MandalMotors High Output Engine Prototype III,MandalMotor
 Part,pmwk2eng04,Engine,MandalMotors High Output Engine Prototype IV,MandalMotors High Output Engine Prototype IV,,7,,Crafted,Observed,215.3,429.8,16459.7,2027.3,,74.8,74.8,67.1,107.0,,,,,,,,,,,,,,,,,,
 Part,pmwk2eng05,Engine,MandalMotors High Output Engine Prototype V,MandalMotors High Output Engine Prototype V,,9,,Crafted,Observed,248.3,496.5,39735.1,2114.8,,77.1,77.1,69.7,122.0,,,,,,,,,,,,,,,,,,
 Part,pmshyj9n80bmc,Engine,-IFY- NOVA INDUSTRIES MARK V ENGINE [AOA DOLPHI 15 15,Nova Industries,,9,Fighter,Crafted,Observed,535.8,1070.3,36806.4,2082.6,,87.7,71.4,71.4,121.8,,,,,,,,,,,,,,,,,,
+Part,pmsia65640nul,Countermeasure,A-Tech Chaff Launcher,Chaff Launcher,,1,,Crafted,Observed,70.5,141.3,850,912.1,,,,,,,,,,,,,,,,,1,10,0.5,0.5,0,0.5,
+Part,pmsia65641f6a,Countermeasure,[DEL]Chaff Launcher,Chaff Launcher,,1,,Crafted,Observed,67.3,147.4,979,1024.7,,,,,,,,,,,,,,,,,49.9,77.3,0,0,0,0.38,
