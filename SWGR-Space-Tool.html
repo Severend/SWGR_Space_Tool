@@ -123,6 +123,11 @@
   /* State pip — the toggle has to be readable as on/off at a glance, not by colour alone */
   .split-toggle .asdot{width:6px;height:6px;border-radius:50%;background:var(--line2);border:1px solid var(--txt-dim);transition:.12s}
   .split-toggle.active .asdot{background:var(--accent);border-color:var(--accent);box-shadow:0 0 6px rgba(var(--accent-rgb),.8)}
+  /* Toolbar group divider: your-own-file actions vs community-pool actions. The
+     toolbar wraps, so it collapses to nothing on a row break rather than leaving
+     a stray rule floating at the start of a line. */
+  .tb-div{width:1px;align-self:stretch;margin:2px 2px;background:var(--line2);opacity:.7}
+  .tb-div:first-child,.tb-div:last-child{display:none}
 
   select,input[type=text],input[type=number]{
     font-family:var(--mono);background:var(--bg);border:1px solid var(--line2);color:var(--txt);
@@ -963,14 +968,21 @@
   <section class="view active" id="view-components">
     <div class="toolbar">
       <button class="btn primary" id="btn-bulk"><span class="ico">＋</span> Add Component</button>
+      <!-- YOUR OWN FILE: load it, save it back out. -->
       <button class="btn" id="btn-load"><span class="ico">▣</span> Load CSV</button>
-      <button class="btn" id="btn-import"><span class="ico">⇩</span> Import Shared</button>
+      <span class="btn-split">
+        <button class="btn" id="btn-export"><span class="ico">⇧</span> Export CSV</button>
+        <button class="btn split-toggle" id="btn-export-inc" aria-pressed="false" title="Include community-pool parts in Export CSV. Off (default) exports only your own data, so loading the file back can't re-seed the pool from a stale copy — the community file is pulled fresh anyway. Turn on for a full-state backup."><span class="asdot"></span>SYNC</button>
+      </span>
+      <span class="tb-div"></span>
+      <!-- THE COMMUNITY POOL: pull it, receive a file of it, publish to it. -->
       <span class="btn-split">
         <button class="btn" id="btn-sync"><span class="ico">⟳</span> Community Sync</button>
         <button class="btn split-toggle" id="btn-autosync" aria-pressed="true" title="Sync the community pool automatically: once when the page loads, and again after every Load CSV (which replaces your dataset and would otherwise discard synced parts). Turn off to sync only when you press Community Sync."><span class="asdot"></span>AUTO</button>
       </span>
-      <button class="btn" id="btn-export"><span class="ico">⇧</span> Export CSV</button>
-      <button class="btn" id="btn-export-sync"><span class="ico">☁</span> Export for Sync</button>
+      <button class="btn" id="btn-import"><span class="ico">⇩</span> Import Shared</button>
+      <button class="btn" id="btn-export-sync" title="Write a file of the parts YOU logged, ready to contribute to the shared pool. Parts you received from Community Sync are left out — the pool already has them — so this is a clean set of new data to merge, not a copy of the whole pool. Only your own entries are checked for mis-typed stats."><span class="ico">☁</span> Export for Sync</button>
+      <span class="tb-div"></span>
       <button class="btn" id="btn-weights"><span class="ico">⚖</span> Weighting</button>
       <button class="btn" id="btn-hunter"><span class="ico">◎</span> Source Hunter</button>
       <button class="btn" id="btn-parthunter"><span class="ico">◈</span> Part Hunter</button>
@@ -1473,7 +1485,26 @@ const ALL_STAT_KEYS = Object.keys(STAT_DEFS);
 // name instead of re-deriving identity from stats on every load. Deliberately
 // NOT part of partSignature (see _partSigParts) so backfilling it later can't
 // split observed duplicates.
-const CSV_COLUMNS = ['RowType','InstanceId','ComponentType','ComponentName','VariationOf','RELevel','CertificationLevel','ShipClass','Source','Ownership', ...ALL_STAT_KEYS, 'Payload'];
+// SysFlags: space-separated system tokens describing where a row CAME FROM and
+// how the app should treat it — local bookkeeping, not part of a part's identity
+// (deliberately absent from _partSigParts, so tagging can never split a dupe).
+// Today the only token is 'sync' = this row arrived from the community pool
+// rather than being logged here; the field is a token LIST so tombstones and
+// whatever comes next can join it without another schema change. Read by header
+// NAME everywhere, so older CSVs without the column load fine and older builds
+// of the app can still read files that have it.
+const SYS_FLAG_SYNC = 'sync';
+const CSV_COLUMNS = ['RowType','InstanceId','ComponentType','ComponentName','VariationOf','RELevel','CertificationLevel','ShipClass','Source','Ownership','SysFlags', ...ALL_STAT_KEYS, 'Payload'];
+function sysFlags(r){ return String((r&&r.SysFlags)||'').trim().split(/\s+/).filter(Boolean); }
+function hasSysFlag(r,f){ return sysFlags(r).indexOf(f)>=0; }
+function setSysFlag(r,f,on){
+  const s=new Set(sysFlags(r));
+  if(on) s.add(f); else s.delete(f);
+  r.SysFlags=[...s].join(' ');
+  return r;
+}
+// "Came from the community pool" — the test the personal export filters on.
+function isSyncRow(r){ return hasSysFlag(r, SYS_FLAG_SYNC); }
 
 /* RE Level vs Certification Level are two genuinely different numbers on the
    same part (e.g. Protecto-Net Shield: "Level 8 Ship Equipment" + "Reverse
@@ -1845,6 +1876,7 @@ function csvToComponents(text){
       ShipClass: get(arr,'ShipClass'),
       Source: normSource(get(arr,'Source'))||'Looted',
       Ownership: get(arr,'Ownership')||'Owned',
+      SysFlags: get(arr,'SysFlags')||'',   // absent in pre-2026-08-06 CSVs — blank is correct
     };
     ALL_STAT_KEYS.forEach(k=>{ const v=get(arr,k); obj[k]= v===''?'':(isNaN(v)?'':Number(v)); });
     out.push(applyLevelDefaults(obj));
@@ -3123,20 +3155,27 @@ document.getElementById('file-input').addEventListener('change',e=>{
 });
 function exportCSV(){
   if(!DATA.length && !(typeof SHIPS!=='undefined'&&SHIPS.length)){ toast('Nothing to export'); return; }
-  const csv=buildExportCSV();
+  const csv=buildExportCSV(EXPORT_INCLUDE_SYNC);
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download='swgr-space-tool-components.csv'; a.click();
   URL.revokeObjectURL(url);
   const nShips=(typeof SHIPS!=='undefined')?SHIPS.length:0;
-  toast('Exported '+DATA.length+' component(s)'+(nShips?' + '+nShips+' ship(s)':''));
+  const held=EXPORT_INCLUDE_SYNC?0:DATA.filter(isSyncRow).length;
+  toast('Exported '+(DATA.length-held)+' component(s)'+(nShips?' + '+nShips+' ship(s)':'')
+    +(held?'  ·  left out '+held+' community-pool part'+(held>1?'s':''):''));
 }
-// Parts (RowType=Part) + saved ships (RowType=Loadout, ship JSON in Payload).
-function buildExportCSV(){
+/* Parts (RowType=Part) + saved ships (RowType=Loadout, ship JSON in Payload).
+   Community-pool rows are omitted unless includeSync — this is YOUR file, and
+   re-exporting the pool into it is what let stale copies of community parts
+   accumulate in people's saved files and then merge back on load. Owned rows are
+   never filtered: markSyncSourced only ever tags Observed. Loadouts always go. */
+function buildExportCSV(includeSync){
   const esc=v=>{ v=(v==null)?'':String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; };
   const lines=[CSV_COLUMNS.join(',')];
-  DATA.forEach(r=>{ const row=Object.assign({RowType:'Part',Payload:''}, r); lines.push(CSV_COLUMNS.map(c=>esc(row[c])).join(',')); });
+  DATA.forEach(r=>{ if(!includeSync && isSyncRow(r)) return;
+    const row=Object.assign({RowType:'Part',Payload:''}, r); lines.push(CSV_COLUMNS.map(c=>esc(row[c])).join(',')); });
   if(typeof SHIPS!=='undefined') SHIPS.forEach(s=>{
     const row={RowType:'Loadout', InstanceId:s.id, ComponentType:s.template, ComponentName:s.name, CertificationLevel:s.cert, Source:'', Ownership:'', Payload:JSON.stringify(s)};
     lines.push(CSV_COLUMNS.map(c=>esc(row[c]!=null?row[c]:'')).join(','));
@@ -3148,9 +3187,11 @@ function buildExportCSV(){
    COMMUNITY SYNC  (shared observed pool hosted on GitHub)
    ------------------------------------------------------------
    Pull ("Community Sync"): fetch the community file and merge it as Observed
-   using the same dedup as Import Shared. Push ("Export for Sync"): write a
-   clean community file — every component forced to Observed, personal loadouts
-   and settings excluded — ready to commit to the repo or send the maintainer.
+   using the same dedup as Import Shared. Push ("Export for Sync"): write this
+   player's CONTRIBUTION — only the parts they logged themselves, forced to
+   Observed, personal loadouts and settings excluded — to send the maintainer,
+   who merges it into the published file. Pool rows are excluded, so the output
+   is NOT a drop-in replacement for community-sync.csv; see exportCommunitySync.
    ============================================================ */
 const COMMUNITY_SYNC_URL = 'https://raw.githubusercontent.com/Severend/SWGR_Space_Tool/main/community-sync.csv';
 
@@ -3176,6 +3217,13 @@ const COMMUNITY_SYNC_URL = 'https://raw.githubusercontent.com/Severend/SWGR_Spac
    didn't author the data and can't judge it. The file is curated by one
    maintainer, so the check belongs where they add to it. Everyone else just
    receives the cleaned file.
+
+   Same principle, applied one level finer (2026-08-06): even at export, only
+   rows the player ENTERED are screened — anything flagged 'sync' in SysFlags is
+   skipped. Asking someone to vouch for a stranger's part is a question they
+   can't answer, and being challenged over data they never typed made people
+   hesitant to publish at all. Lost contributions cost more than an unscreened
+   row that the pool had already accepted.
 
    Uses ocrStatFlags, the same >2.5x-max / <0.5x-min detector the scan modal
    marks fields with, so "suspect" means one thing everywhere in the app.
@@ -3300,7 +3348,10 @@ let PENDING_SUSPECTS=[];   // [{row, flags}] awaiting keep/discard
    file is authoritative for corrections, not for erasure, and locally-enriched
    fields (a VariationOf the user filled in, a name they cleaned up) would
    otherwise be wiped by an older community row that simply lacked them. */
-const SYNC_KEEP_LOCAL = {RowType:1, InstanceId:1, Payload:1, Ownership:1};
+// SysFlags is local provenance, so the incoming file never writes it — the merge
+// below sets it deliberately instead. (The published file carries it blank
+// anyway; exportCommunitySync strips it.)
+const SYNC_KEEP_LOCAL = {RowType:1, InstanceId:1, Payload:1, Ownership:1, SysFlags:1};
 function applySyncUpdate(dest, src){
   const changed=[];
   CSV_COLUMNS.forEach(c=>{
@@ -3311,6 +3362,19 @@ function applySyncUpdate(dest, src){
     if(nv!==ov){ dest[c]=src[c]; changed.push(c); }
   });
   return changed;
+}
+/* Tag a row the community pool already covers. Two jobs: it back-fills rows that
+   were synced in before SysFlags existed, and it catches the case where the pool
+   holds a part under a different InstanceId than ours — either way the pool has
+   it, so re-publishing our copy adds nothing.
+
+   ONLY ever tags Observed rows. The signature map below can hand back an OWNED
+   row as the dedup target, and flagging that would quietly drop the user's own
+   part from their own export — the exact data loss this whole feature exists to
+   prevent. Ownership is the line: if you own it, it is yours to export. */
+function markSyncSourced(row){
+  if(row && row.Ownership==='Observed') setSysFlag(row, SYS_FLAG_SYNC, true);
+  return row;
 }
 function mergeSharedComponents(parsed){
   parsed.forEach(p=>p.Ownership='Observed');
@@ -3330,7 +3394,10 @@ function mergeSharedComponents(parsed){
     const hit = p.InstanceId ? byInstance.get(p.InstanceId) : null;
     if(!hit){ rest.push(p); return; }
     idMatched.add(hit);
-    if(hit.Ownership==='Observed' && applySyncUpdate(hit,p).length) corrected++;
+    if(hit.Ownership==='Observed'){
+      if(applySyncUpdate(hit,p).length) corrected++;
+      markSyncSourced(hit);   // retro-tags rows synced before SysFlags existed
+    }
     // matched by id either way — never fall through and add a duplicate
   });
   parsed = rest;
@@ -3358,10 +3425,12 @@ function mergeSharedComponents(parsed){
       // the VariationOf field shipped, or backfilled community-side), pick it up
       // rather than silently re-exporting our blank forever.
       if(!authoritative && !hit.VariationOf && p.VariationOf){ hit.VariationOf=p.VariationOf; filledVO++; }
+      markSyncSourced(hit);                         // stat-identical to a pool row = pool-covered
       return;                                       // never add a duplicate
     }
     byId.set(k,p); fresh.push(p);                   // new part (also dedups within this batch)
   });
+  fresh.forEach(r=>setSysFlag(r, SYS_FLAG_SYNC, true));
   DATA = DATA.concat(fresh);
   return { added: fresh.length, dupes, renamed, filledVO, corrected };
 }
@@ -3445,6 +3514,25 @@ function closeSuspects(){ document.getElementById('sus-drawer').classList.remove
    off means sync only when the button is pressed. */
 const AUTOSYNC_KEY='rogue-autosync';
 let AUTO_SYNC = (localStorage.getItem(AUTOSYNC_KEY)!=='0');   // absent = on
+
+/* Export CSV: include community-pool rows? Default OFF — your export should be
+   your own data, so loading it back doesn't re-seed the pool from a stale copy.
+   On is for a true full-state backup. Note the asymmetry with AUTO_SYNC above:
+   absent means OFF here, so the safe behaviour is what a new user gets. */
+const EXPORTSYNC_KEY='rogue-exportsync';
+let EXPORT_INCLUDE_SYNC = (localStorage.getItem(EXPORTSYNC_KEY)==='1');   // absent = off
+function renderExportSyncChip(){
+  const c=document.getElementById('btn-export-inc'); if(!c) return;
+  c.classList.toggle('active', EXPORT_INCLUDE_SYNC);
+  c.setAttribute('aria-pressed', EXPORT_INCLUDE_SYNC?'true':'false');
+}
+function setExportIncludeSync(on){
+  EXPORT_INCLUDE_SYNC=!!on;
+  try{ localStorage.setItem(EXPORTSYNC_KEY, EXPORT_INCLUDE_SYNC?'1':'0'); }catch(_){}
+  renderExportSyncChip();
+  toast(EXPORT_INCLUDE_SYNC?'Export CSV will include community-pool parts (full backup)'
+                           :'Export CSV will contain only your own parts');
+}
 function renderAutoSyncChip(){
   const c=document.getElementById('btn-autosync'); if(!c) return;
   c.classList.toggle('active', AUTO_SYNC);
@@ -3497,13 +3585,33 @@ async function communitySync(opts){
 // The last gate before data becomes everyone's problem: a bad row published here
 // stretches every downstream player's ranges. Screening the outgoing file catches
 // rows that were typed by hand or predate the scan modal's own suspect check.
+/* Publishes a DELTA: only the parts this player logged themselves, never the
+   pool rows they received. Each contribution is then a clean set of new data the
+   maintainer merges into the master file, instead of a whole restatement of the
+   pool that has to be diffed against itself to find the few new rows.
+
+   The corollary is the reason the download is NOT named community-sync.csv:
+   this file is no longer a drop-in replacement for the published one. Dropping
+   it over the master would collapse the pool to a single player's parts. It is a
+   contribution to be merged, and the filename says so. */
 function exportCommunitySync(){
-  if(!DATA.length){ toast('No components to export'); return; }
+  const mine = DATA.filter(r=>!isSyncRow(r));
+  if(!mine.length){
+    toast(DATA.length ? 'Nothing of your own to publish — every part you hold came from the community pool'
+                      : 'No components to export');
+    return;
+  }
   // A row the user has already looked at and KEPT is a deliberate decision —
   // it must not nag again on every export, or the gate trains you to ignore it.
   // (Discarded rows are gone from DATA, so they can't reappear here.)
   const kept=new Set(PENDING_SUSPECTS.filter(s=>s.verdict==='keep').map(s=>s.row));
-  const sus=syncSuspects(DATA).filter(s=>!kept.has(s.row));
+  /* Screen ONLY what this player entered. Rows carrying the 'sync' flag came from
+     the pool — somebody else logged them and the maintainer already passed them —
+     so flagging them here asks a question the user cannot answer: they have no
+     idea whether a stranger's part was mis-typed, and can't check it in game. The
+     observed effect was hesitancy about publishing at all, which costs far more
+     data than the odd unscreened row. Judge people on their own entries. */
+  const sus=syncSuspects(mine).filter(s=>!kept.has(s.row));
   if(sus.length && !exportCommunitySync._confirmed){
     PENDING_SUSPECTS = PENDING_SUSPECTS.concat(sus.filter(s=>!PENDING_SUSPECTS.some(p=>p.row===s.row)));
     exportCommunitySync._confirmed = true;   // one nag; press Export again to publish as-is
@@ -3512,14 +3620,21 @@ function exportCommunitySync(){
     return;
   }
   exportCommunitySync._confirmed = false;
-  const rows = DATA.map(r=>Object.assign({}, r, {RowType:'Part', Ownership:'Observed', Payload:''}));
+  // SysFlags is local provenance — blank it so the published file never ships
+  // one player's bookkeeping to everyone else. Receivers tag on merge instead.
+  // Re-filter rather than reuse `mine`: a suspect DISCARD rebuilds DATA, so the
+  // earlier snapshot can hold rows the user has since thrown away.
+  const rows = DATA.filter(r=>!isSyncRow(r))
+    .map(r=>Object.assign({}, r, {RowType:'Part', Ownership:'Observed', Payload:'', SysFlags:''}));
   const csv = componentsToCSV(rows);
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
-  a.href=url; a.download='community-sync.csv'; a.click();
+  a.href=url; a.download='community-sync-contribution.csv'; a.click();
   URL.revokeObjectURL(url);
-  toast('Exported '+rows.length+' component(s) for community sync — all Observed, no loadouts');
+  const fromPool = DATA.length - rows.length;
+  toast('Exported '+rows.length+' of your own component(s) to contribute — all Observed, no loadouts'
+    +(fromPool?'  ·  '+fromPool+' pool part'+(fromPool>1?'s':'')+' left out':''));
 }
 
 /* ============================================================
@@ -5860,12 +5975,12 @@ function renderGuide(){
     <h2>CSV schema</h2>
     <p>One component per row. Columns (extra columns are ignored; missing stat columns are treated as blank):</p>
     <table class="mini"><tr><th>Group</th><th>Columns</th></tr>
-      <tr><td>Identity</td><td><code>ComponentType</code>, <code>ComponentName</code>, <code>RELevel</code> (blank for Crafted), <code>CertificationLevel</code>, <code>ShipClass</code> (Fighter/POB, only meaningful at level 9/10), <code>Source</code> (Crafted/Looted/REed — legacy "Dropped" imports as Looted), <code>Ownership</code> (Owned/Observed). Legacy CSVs with a single <code>CertificationLevel</code> column still import — the value is copied into <code>RELevel</code> for Looted/REed rows, and <code>ShipClass</code> defaults to Fighter at level 9/10.</td></tr>
+      <tr><td>Identity</td><td><code>ComponentType</code>, <code>ComponentName</code>, <code>RELevel</code> (blank for Crafted), <code>CertificationLevel</code>, <code>ShipClass</code> (Fighter/POB, only meaningful at level 9/10), <code>Source</code> (Crafted/Looted/REed — legacy "Dropped" imports as Looted), <code>Ownership</code> (Owned/Observed), <code>SysFlags</code> (system tokens — <code>sync</code> means the row came from the community pool rather than being logged here). Legacy CSVs with a single <code>CertificationLevel</code> column still import — the value is copied into <code>RELevel</code> for Looted/REed rows, and <code>ShipClass</code> defaults to Fighter at level 9/10. CSVs saved before <code>SysFlags</code> existed import with it blank; the next Community Sync tags whatever the pool covers.</td></tr>
       <tr><td>General</td><td><code>Armor</code>, <code>Hitpoints</code>, <code>Mass</code>, <code>ReactorEnergyDrain</code> <span style="color:var(--txt-dim)">(drain omitted for Reactors &amp; Armor plates)</span></td></tr>
       <tr><td>Specific</td><td>Reactor: <code>ReactorGenerationRate</code> · Engine: <code>PitchRateMax YawRateMax RollRateMax EngineTopSpeed</code> · Shield: <code>FrontShieldHP BackShieldHP ShieldRechargeRate</code> · Capacitor: <code>CapacitorEnergy CapacitorRechargeRate</code> · Booster: <code>BoosterEnergy BoosterRechargeRate BoosterEnergyConsumption BoosterAcceleration TopBoosterSpeed</code> · Droid: <code>DroidCommandSpeed</code> · Weapon: <code>DamageMin DamageMax VsShields VsArmor EnergyPerShot RefireRate</code></td></tr>
     </table>
     <p><b>Load CSV</b> replaces the dataset and keeps each row's Ownership. <b>Import Shared</b> appends another player's file, forces every imported part to <code>Observed</code>, and matches parts by their stats (not their name) — a part whose stats you already have is not re-added, and if the incoming copy has a cleaner name it updates your Observed row in place (your own <code>Owned</code> parts are never renamed). You only need one copy of each observed roll. <b>Export CSV</b> writes the full schema so others can import your dataset.</p>
-    <p><b>Community Sync</b> pulls the shared component pool published online and merges it exactly like Import Shared — everything arrives as <code>Observed</code>, parts you already have are skipped, and corrected names replace older ones, so it is always safe to click. <b>Export for Sync</b> writes a clean community file: every component forced to <code>Observed</code> with personal loadouts and settings stripped, ready to contribute back to the shared pool.</p>
+    <p><b>Community Sync</b> pulls the shared component pool published online and merges it exactly like Import Shared — everything arrives as <code>Observed</code>, parts you already have are skipped, and corrected names replace older ones, so it is always safe to click. <b>Export for Sync</b> writes your <b>contribution</b> to that pool: the parts <i>you</i> logged, forced to <code>Observed</code>, with personal loadouts and settings stripped. Parts you received from the pool are left out — it already has them — so the file is a clean set of new data to merge rather than a restatement of the whole pool, and it downloads as <code>community-sync-contribution.csv</code> to keep it from being mistaken for the published file. For the same reason only <i>your own</i> entries are screened for mis-typed stats: you can't vouch for a part somebody else logged.</p>
 
     <h2>Weapon launch rounding</h2>
     <label class="checkbox" style="margin:8px 0"><input type="checkbox" id="round-toggle"> Apply in-game launch rounding to Vs.&nbsp;Shields, Vs.&nbsp;Armor &amp; Refire Rate (nearest 0.01) before scoring</label>
@@ -6814,6 +6929,7 @@ document.getElementById('btn-import').addEventListener('click',()=>triggerLoad(t
 document.getElementById('btn-sync').addEventListener('click',()=>communitySync());
 document.getElementById('btn-autosync').addEventListener('click',()=>setAutoSync(!AUTO_SYNC));
 document.getElementById('btn-export').addEventListener('click',exportCSV);
+document.getElementById('btn-export-inc').addEventListener('click',()=>setExportIncludeSync(!EXPORT_INCLUDE_SYNC));
 document.getElementById('btn-export-sync').addEventListener('click',exportCommunitySync);
 document.getElementById('btn-clear').addEventListener('click',()=>{
   if(!DATA.length){ toast('Dataset already empty'); return; }
@@ -7684,6 +7800,7 @@ function init(){
   renderGuide();
   recompute();
   renderAutoSyncChip();
+  renderExportSyncChip();
   autoSync();          // page-load pull; no-ops when the toggle is off
 }
 init();
