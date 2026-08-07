@@ -1928,7 +1928,57 @@ function partSignature(row){ return _partSigParts(row, true); }
 // so an OCR name correction (same part, cleaner name) updates the stored name in
 // place instead of importing a duplicate. Different stat ROLLS still differ (all
 // stats are in the key), so legitimate range-filling variety is preserved.
+// NOT sufficient on its own to call two rows the same part — pair it with
+// sameNameAfterOcr below.
 function partSigNoName(row){ return _partSigParts(row, false); }
+/* The guard on partSigNoName. Dropping the name from the key assumed that
+   identical stats mean the same part; that holds for rolled Looted drops, where
+   agreeing on 7-10 one-decimal values by chance doesn't happen, but NOT for
+   cosmetic variants off one schematic. Heavy Blaster (Green) and (Red) share a
+   stat block, so the merge treated them as one part and silently dropped the Red
+   row — a differently named part destroyed on arrival, which no amount of
+   re-syncing gets back.
+
+   So: stat-identical rows are the same part only if their names differ by no
+   more than OCR damage. canonFold already removes the game font's SYSTEMATIC
+   errors (V rendered as ¥/Y, I/1 and O/0 interchanging), which is why the real
+   cases fold to equal or a single substitution — ADYANCED/ADVANCED folds equal,
+   TON/ION and STENAR/SIENAR are one character.
+
+   Plain edit distance is the wrong test, though: it can't tell a misread glyph
+   from a meaningful token, and would happily merge "Mark I Booster" with
+   "Mark V Booster" (distance 1). So require the differing characters to be
+   SHAPES THIS FONT ACTUALLY CONFUSES, and require equal length — an inserted or
+   dropped character is not a shape confusion. I/V is not a confusable pair, so
+   the marks stay distinct; GREEN vs RED differs in length and never gets that
+   far.
+
+   The two failure modes are not symmetric: too tight leaves a duplicate row,
+   which the name correction pass or a maintainer can clean up later; too loose
+   deletes a real part permanently. Bias toward the split. */
+const OCR_CONFUSABLE = (function(){
+  // Groups are pairwise, not transitive: 'G6' and 'CG' make C~G and G~6, not C~6.
+  // In folded space, so 1/0/Y are already gone. I/V is deliberately absent.
+  const m={};
+  ['ITL','ODQ','S5','B8','G6','CG','EF','NM','UV','2Z','7T'].forEach(g=>{
+    for(const a of g) for(const b of g) if(a!==b) m[a+b]=1;
+  });
+  return m;
+})();
+function sameNameAfterOcr(a, b){
+  const blank = s => !s || s==='UNNAMED';
+  const x=canonFold(a), y=canonFold(b);
+  if(blank(x) || blank(y)) return true;   // an unnamed row can't contradict a name — let it adopt one
+  if(x===y) return true;                  // equal once the systematic errors fold out
+  if(x.length!==y.length) return false;   // an indel is not a glyph confusion
+  const cap=Math.min(2, Math.floor(x.length/8));
+  let diff=0;
+  for(let i=0;i<x.length;i++){
+    if(x[i]===y[i]) continue;
+    if(++diff>cap || !OCR_CONFUSABLE[x[i]+y[i]]) return false;
+  }
+  return true;
+}
 
 /* ============================================================
    STATE + RENDER
@@ -3425,17 +3475,32 @@ function mergeSharedComponents(parsed){
     // matched by id either way — never fall through and add a duplicate
   });
   parsed = rest;
-  const byId = new Map();   // name-independent signature -> existing row (prefer an Observed target)
-  DATA.forEach(r=>{ const k=partSigNoName(r); const ex=byId.get(k);
-    if(!ex || (ex.Ownership!=='Observed' && r.Ownership==='Observed')) byId.set(k,r); });
+  /* name-independent signature -> the rows sharing it. A LIST, not one row: a
+     stat block can be shared by genuinely different parts (Heavy Blaster Green
+     and Red), so the bucket holds them all and sameNameAfterOcr picks the one
+     that is actually ours. An Observed target is still preferred over an Owned
+     one — see markSyncSourced on why tagging an Owned row would lose it. */
+  const byId = new Map();
+  DATA.forEach(r=>{ const k=partSigNoName(r); const a=byId.get(k); if(a) a.push(r); else byId.set(k,[r]); });
+  const sigMatch = (list, p) => {
+    if(!list) return null;
+    let owned=null;
+    for(const r of list){
+      if(!sameNameAfterOcr(r.ComponentName, p.ComponentName)) continue;
+      if(r.Ownership==='Observed') return r;
+      if(!owned) owned=r;
+    }
+    return owned;
+  };
   const fresh = []; let dupes = 0, renamed = 0, filledVO = 0;
   parsed.forEach(p=>{
-    const k=partSigNoName(p); const hit=byId.get(k);
+    const k=partSigNoName(p); const hit=sigMatch(byId.get(k), p);
     if(hit){                                        // same observed part already present
       /* Don't let a collapsed duplicate rename a row the file already addressed
          by InstanceId. The shared file legitimately holds stat-identical rows
-         logged by different players under different names; signature dedup keeps
-         one, and the loser used to overwrite the winner's name every sync — with
+         logged by different players whose OCR read the name differently;
+         signature dedup keeps one, and the loser used to overwrite the winner's
+         name every sync — with
          two such rows the name oscillated forever, and once id-matching landed,
          the two paths fought each other (both counters ticking on every pull, on
          an unchanged file). The id pass is authoritative; it already wrote every
@@ -3452,7 +3517,8 @@ function mergeSharedComponents(parsed){
       markSyncSourced(hit);                         // stat-identical to a pool row = pool-covered
       return;                                       // never add a duplicate
     }
-    byId.set(k,p); fresh.push(p);                   // new part (also dedups within this batch)
+    const a=byId.get(k); if(a) a.push(p); else byId.set(k,[p]);
+    fresh.push(p);                                  // new part (also dedups within this batch)
   });
   fresh.forEach(r=>setSysFlag(r, SYS_FLAG_SYNC, true));
   DATA = DATA.concat(fresh);
