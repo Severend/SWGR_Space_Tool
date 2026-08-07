@@ -3648,16 +3648,44 @@ function exportCommunitySync(){
   // one player's bookkeeping to everyone else. Receivers tag on merge instead.
   // Re-filter rather than reuse `mine`: a suspect DISCARD rebuilds DATA, so the
   // earlier snapshot can hold rows the user has since thrown away.
-  const rows = DATA.filter(r=>!isSyncRow(r))
-    .map(r=>Object.assign({}, r, {RowType:'Part', Ownership:'Observed', Payload:'', SysFlags:''}));
+  /* COLLAPSE OWNED MULTIPLES. Holding several copies of a part is normal and
+     real — a crafter's batch, the pair of PROTOTYPE ARMOR a starter ship comes
+     with — and DATA is right to keep every one of them. The POOL is a different
+     thing: it records which stat combinations exist, not how many copies anyone
+     owns, and nothing downstream reads multiplicity. Every row leaving here is
+     forced to Observed, where the standing rule is one row per signature, so
+     without this the Ownership flip below quietly turns legitimate Owned
+     multiples into pool duplicates — which is exactly how the seven that sat in
+     community-sync.csv until 2026-08-07 got there.
+
+     Keyed on partSignature, name INCLUDED — deliberately NOT the partSigNoName
+     key the receiver's merge uses. That key would also collapse two DIFFERENTLY
+     NAMED parts that happen to share a stat block (Heavy Blaster Green vs Red),
+     and dropping a name at the point of authorship can't be undone. Conservative
+     on the way out, aggressive on receipt: anything this leaves behind the merge
+     still catches. */
+  const seen = new Map(); let collapsed = 0;
+  const rows = [];
+  DATA.filter(r=>!isSyncRow(r)).forEach(r=>{
+    const k = partSignature(r), hit = seen.get(k);
+    if(hit){
+      // Same part twice: keep the first, but adopt identity data only the later
+      // copy carries rather than publishing our blank. Mirrors the merge's filledVO.
+      if(!hit.VariationOf && r.VariationOf) hit.VariationOf = r.VariationOf;
+      collapsed++; return;
+    }
+    const out = Object.assign({}, r, {RowType:'Part', Ownership:'Observed', Payload:'', SysFlags:''});
+    seen.set(k, out); rows.push(out);
+  });
   const csv = componentsToCSV(rows);
   const blob=new Blob([csv],{type:'text/csv'});
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download='community-sync-contribution.csv'; a.click();
   URL.revokeObjectURL(url);
-  const fromPool = DATA.length - rows.length;
+  const fromPool = DATA.length - rows.length - collapsed;
   toast('Exported '+rows.length+' of your own component(s) to contribute — all Observed, no loadouts'
+    +(collapsed?'  ·  '+collapsed+' duplicate'+(collapsed>1?'s':'')+' of your own collapsed':'')
     +(fromPool?'  ·  '+fromPool+' pool part'+(fromPool>1?'s':'')+' left out':''));
 }
 
@@ -6024,7 +6052,7 @@ function renderGuide(){
     </table>
     <p><b>Countermeasures</b> (chaff launchers) print an identical stat block to a weapon, so there is no stat set that tells the two apart — they are identified by name instead, the one exception to the type-from-stats rule. The stats are recorded, but on a ship none of them do anything: a countermeasure adds <b>no DPS and no capacitor cost</b>, only <b>mass and reactor drain</b>. Its ammunition belongs to the loaded chaff <i>pack</i>, not the launcher, so it isn't a tracked stat. There is no looted countermeasure data — they are crafted only — so the Part / Source Hunters and the drop-probability charts have nothing to show for them.</p>
     <p><b>Load CSV</b> replaces the dataset and keeps each row's Ownership. <b>Import Shared</b> appends another player's file, forces every imported part to <code>Observed</code>, and matches parts by their stats (not their name) — a part whose stats you already have is not re-added, and if the incoming copy has a cleaner name it updates your Observed row in place (your own <code>Owned</code> parts are never renamed). You only need one copy of each observed roll. <b>Export CSV</b> writes the full schema so others can import your dataset.</p>
-    <p><b>Community Sync</b> pulls the shared component pool published online and merges it exactly like Import Shared — everything arrives as <code>Observed</code>, parts you already have are skipped, and corrected names replace older ones, so it is always safe to click. <b>Export for Sync</b> writes your <b>contribution</b> to that pool: the parts <i>you</i> logged, forced to <code>Observed</code>, with personal loadouts and settings stripped. Parts you received from the pool are left out — it already has them — so the file is a clean set of new data to merge rather than a restatement of the whole pool, and it downloads as <code>community-sync-contribution.csv</code> to keep it from being mistaken for the published file. For the same reason only <i>your own</i> entries are screened for mis-typed stats: you can't vouch for a part somebody else logged.</p>
+    <p><b>Community Sync</b> pulls the shared component pool published online and merges it exactly like Import Shared — everything arrives as <code>Observed</code>, parts you already have are skipped, and corrected names replace older ones, so it is always safe to click. <b>Export for Sync</b> writes your <b>contribution</b> to that pool: the parts <i>you</i> logged, forced to <code>Observed</code>, with personal loadouts and settings stripped. If you own several copies of the same part they go out as <b>one row</b> — owning three is real, but the pool records which stats exist, not how many you hold. Parts you received from the pool are left out — it already has them — so the file is a clean set of new data to merge rather than a restatement of the whole pool, and it downloads as <code>community-sync-contribution.csv</code> to keep it from being mistaken for the published file. For the same reason only <i>your own</i> entries are screened for mis-typed stats: you can't vouch for a part somebody else logged.</p>
 
     <h2>Weapon launch rounding</h2>
     <label class="checkbox" style="margin:8px 0"><input type="checkbox" id="round-toggle"> Apply in-game launch rounding to Vs.&nbsp;Shields, Vs.&nbsp;Armor &amp; Refire Rate (nearest 0.01) before scoring</label>
