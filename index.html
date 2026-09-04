@@ -7153,7 +7153,7 @@ function renderShipStats(){
   const st=loShipStats(); if(!st){ host.innerHTML=''; return; }
   const num=n=>loFmt(n);
   const miss='<span class="perf-miss">—</span>';
-  const tile=(label,val,sub,cls)=>`<div class="perf-tile${cls?' '+cls:''}"><div class="perf-lbl">${label}</div><div class="perf-val">${val}</div><div class="perf-sub">${sub||''}</div></div>`;
+  const tile=(label,val,sub,cls)=>`<div class="perf-tile${cls?' '+cls:''}"><div class="perf-lbl" title="${label}">${label}</div><div class="perf-val">${val}</div><div class="perf-sub">${sub||''}</div></div>`;
   const speedNote = st.engMult>1?`Engine Overload ×${st.engMult}`:'';
   const dmgNote = st.dmgMult>1?`Weapon Overload ×${st.dmgMult}`:'';
   let fireVal, fireSub, fireCls='fire';
@@ -7296,7 +7296,8 @@ function spoCertHtml(r){
   return c==='(no cert)' ? '' : '<span class="spo-cert">Cert '+loEsc(c)+'</span>';
 }
 function spoHead(r){
-  return '<div class="spo-head"><span class="spo-name">'+loEsc(r.ComponentName)+'</span>'+spoTagHtml(r.Source)+spoCertHtml(r)+'</div>';
+  const nm=loEsc(r.ComponentName);
+  return '<div class="spo-head"><span class="spo-name" title="'+nm+'">'+nm+'</span>'+spoTagHtml(r.Source)+spoCertHtml(r)+'</div>';
 }
 function renderSlots(){
   const wrap=document.getElementById('lo-slots'); const sh=ship(); if(!wrap||!sh) return;
@@ -7326,8 +7327,9 @@ function renderSlots(){
         ? '<div class="sempty" style="margin-top:6px">Mass and reactor drain only — no DPS, no capacitor cost. Charged to the reactor last, and not touched by Optimize.</div>'
         : (r?'<div class="sscore"><i style="width:'+Math.round(curScore/maxScore*100)+'%"></i></div>':'');
       const btnLabel = r ? loEsc(r.ComponentName) : '— empty —';
+      const btnTitle = r ? ' title="'+loEsc(r.ComponentName)+'"' : '';
       inner='<div class="slotpick" data-slot="'+sl.key+'">'+
-        '<button type="button" class="slotpick-btn"'+(locked?' disabled':'')+'><span class="spb-name">'+btnLabel+'</span><span class="spb-arrow">▾</span></button>'+
+        '<button type="button" class="slotpick-btn"'+(locked?' disabled':'')+'><span class="spb-name"'+btnTitle+'>'+btnLabel+'</span><span class="spb-arrow">▾</span></button>'+
         '<div class="slotpick-panel">'+optsHtml+'</div>'+
         '</div><div class="sstats">'+slotStatLine(sl,r)+'</div>'+bar;
     }
